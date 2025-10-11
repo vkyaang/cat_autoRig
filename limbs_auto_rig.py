@@ -16,10 +16,15 @@ JOINTS_GRP = 'joints'
 
 TEMP_FT_LEG_JOINTS = 'temp_l_ft_upperLeg_0001'
 TEMP_BK_LEG_JOINTS = 'temp_l_bk_upperLeg_0001'
+TEMP_SCAPULA = 'temp_l_scapula_0001'
 
 
 class LimbsAutoRig(object):
 	def __init__(self):
+		self.r_scapula_ctrl = None
+		self.l_scapula_ctrl = None
+		self.r_scapula_joints = None
+		self.l_scapula_joints = None
 		self.l_ft_leg_joints = []
 		self.r_ft_leg_joints = []
 		self.l_bk_leg_joints = []
@@ -71,6 +76,9 @@ class LimbsAutoRig(object):
 		elif "bk" in temp_name:
 			self.l_bk_leg_joints = left_chain
 			self.r_bk_leg_joints = right_chain
+		elif "scapula" in temp_name:
+			self.l_scapula_joints = left_chain
+			self.r_scapula_joints = right_chain
 	
 	def duplicate_chain(self, source_chain, suffix):
 		"""
@@ -180,6 +188,102 @@ class LimbsAutoRig(object):
 			
 			prev_ctrl = fk_ctrl
 	
+	def create_scapula_joint(self, side, temp_joint):
+		# === Main scapula group (root under joints) ===
+		scapula_root_grp = 'grp_scapulaJnts_0001'
+		if not cmds.objExists(scapula_root_grp):
+			cmds.createNode('transform', n=scapula_root_grp, p=JOINTS_GRP)
+		
+		# === Create both side subgroups ===
+		side_grps = {}
+		for s in ['l', 'r']:
+			side_grp = f'grp_{s}_scapulaJnts_0001'
+			if not cmds.objExists(side_grp):
+				side_grp = cmds.createNode('transform', n=side_grp, p=scapula_root_grp)
+			side_grps[s] = side_grp
+		
+		# === Only build once (on left); mirroring handles right ===
+		if not cmds.objExists('jnt_l_scapula_0001'):
+			l_scapula_joints, r_scapula_joints = self.create_joints(temp_joint, mirror=True)
+			
+			# Parent cleanly
+			if l_scapula_joints and cmds.objExists(side_grps['l']):
+				cmds.parent(l_scapula_joints[0], side_grps['l'])
+			if r_scapula_joints and cmds.objExists(side_grps['r']):
+				cmds.parent(r_scapula_joints[0], side_grps['r'])
+			
+			# Store for later access
+			self.l_scapula_joints = l_scapula_joints
+			self.r_scapula_joints = r_scapula_joints
+			
+		else:
+			print("Scapula joints already exist — skipping creation.")
+	
+	def create_scapula_ctrls(self, side, joint_chain):
+		# MAIN group
+		scapula_ctrl_grp = 'grp_scapulaCtrls_0001'
+		if not cmds.objExists(scapula_ctrl_grp):
+			cmds.createNode('transform', n='grp_scapulaCtrls_0001', p=MOVE_ALL_CTRL)
+		
+		# Side groups
+		side_grps = {}
+		for s in ['l', 'r']:
+			side_grp = f'grp_{s}_scapulaCtrls_0001'
+			if not cmds.objExists(side_grp):
+				side_grp = cmds.createNode('transform', n=side_grp, p=scapula_ctrl_grp)
+			side_grps[s] = side_grp
+		
+		# Create single scapula controller for this side
+		if not joint_chain:
+			cmds.warning(f"⚠️ No joints found for scapula on side '{side}'")
+			return
+		
+		jnt = joint_chain[0]  # scapula joint is usually single
+		ctrl_name = f'ctrl_{side}_scapula_0001'
+		
+		ctrl = crv_lib.create_prism_line(ctrl_name)
+		cmds.matchTransform(ctrl, jnt)
+		
+		# create hierarchy (zero → offset → ctrl)
+		AutoRigHelpers.create_control_hierarchy(ctrl, 2)
+		zero_grp = ctrl.replace("ctrl", "zero")
+		cmds.parent(zero_grp, side_grps[side])
+		
+		cmds.parentConstraint(ctrl, jnt, mo=False)
+		
+		print(f"✅ Created scapula control: {ctrl}")
+		
+		# ⚙️ Mirror only the SHAPE if this is the right side
+		if side == 'r':
+			left_ctrl = ctrl.replace('_r_', '_l_')
+			if cmds.objExists(left_ctrl):
+				AutoRigHelpers.mirror_curve_shape(left_ctrl, ctrl)
+				print(f"🔁 Mirrored shape from {left_ctrl} → {ctrl}")
+			else:
+				cmds.warning(f"⚠️ Left control not found for shape mirror: {left_ctrl}")
+		
+		# 🔹 Store controller reference for this side
+		setattr(self, f"{side}_scapula_ctrl", ctrl)
+	
+	def create_scapula_orient(self, side):
+		orient_grp = 'grp_l_scapula_orient_0001'
+		if not cmds.objExists(orient_grp):
+			cmds.createNode('transform', n=orient_grp, p=RIG_NODES_LOCAL_GRP)
+		
+		side_grps = {}
+		for s in ['l', 'r']:
+			side_grp = f'grp_{s}_scapulaOrient_0001'
+			offset_grp = f'offset_{s}_scapulaOrient_0001'
+			if not cmds.objExists(side_grp):
+				side_grp = cmds.createNode('transform', n=side_grp, p=orient_grp)
+				offset_grp = cmds.createNode('transform', n=offset_grp, p=side_grp)
+			side_grps[s] = side_grp
+	
+	def create_scapula_setup(self, side):
+		self.create_scapula_joint(side, TEMP_SCAPULA)
+		self.create_scapula_ctrls(side, getattr(self, f'{side}_scapula_joints'))
+		self.create_scapula_orient(side)
+	
 	def create_leg_setup(self, side):
 		# create joints
 		self.create_fk_ik_leg_joints(side, getattr(self, f"{side}_ft_leg_joints"))
@@ -192,6 +296,8 @@ class LimbsAutoRig(object):
 	def construct_rig(self):
 		self.create_joints(TEMP_FT_LEG_JOINTS, mirror=True)
 		self.create_joints(TEMP_BK_LEG_JOINTS, mirror=True)
-
+		
 		for side in ["l", "r"]:
+			# create scapula
+			self.create_scapula_setup(side)
 			self.create_leg_setup(side)

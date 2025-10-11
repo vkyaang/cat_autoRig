@@ -175,5 +175,33 @@ class AutoRigHelpers(object):
 			cmds.warning(f"Error getting parent hierarchy for {ctrl}: {e}")
 		
 		return zero, offset, driven, connect
-
+	
+	@classmethod
+	def mirror_curve_shape(cls, left_ctrl, right_ctrl):
+		"""
+		Mirror only the NURBS curve shape from left_ctrl → right_ctrl.
+		Does NOT touch transforms or hierarchy.
+		"""
+		if not cmds.objExists(left_ctrl) or not cmds.objExists(right_ctrl):
+			cmds.warning(f"❌ Missing controls: {left_ctrl}, {right_ctrl}")
+			return
 		
+		shapes_l = cmds.listRelatives(left_ctrl, shapes=True, type='nurbsCurve', fullPath=True) or []
+		shapes_r = cmds.listRelatives(right_ctrl, shapes=True, type='nurbsCurve', fullPath=True) or []
+		
+		if not shapes_l or not shapes_r:
+			cmds.warning(f"⚠️ Missing shapes on {left_ctrl} or {right_ctrl}")
+			return
+		
+		for shape_l, shape_r in zip(shapes_l, shapes_r):
+			cvs_l = cmds.ls(f"{shape_l}.cv[*]", flatten=True)
+			cvs_r = cmds.ls(f"{shape_r}.cv[*]", flatten=True)
+			
+			if len(cvs_l) != len(cvs_r):
+				cmds.warning(f"⚠️ CV count mismatch: {shape_l} vs {shape_r}")
+				continue
+			
+			for i, cv_l in enumerate(cvs_l):
+				pos = cmds.xform(cv_l, q=True, ws=True, t=True)
+				pos[0] *= -1  # Mirror X only
+				cmds.xform(cvs_r[i], ws=True, t=pos)
