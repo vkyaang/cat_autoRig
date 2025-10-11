@@ -8,12 +8,19 @@ if pvr_path not in sys.path:
     sys.path.append(pvr_path)
 
 # Import your autorig class
-import auto_rig
-importlib.reload(auto_rig)
+import neck_spine_auto_rig
+importlib.reload(neck_spine_auto_rig)
+import  limbs_auto_rig
+importlib.reload(limbs_auto_rig)
 
 # Run it
 # group = auto_rig.InitRigSetUp()
 # group.construct_setup()
 
-rig = auto_rig.SpineNeckAutoRig()
-rig.construct_rig()
+# build neck and spine
+# neck_spine_rig = neck_spine_auto_rig.SpineNeckAutoRig()
+# neck_spine_rig.construct_rig()
+
+# build limbs
+limbs_rig = limbs_auto_rig.LimbsAutoRig()
+limbs_rig.construct_rig()

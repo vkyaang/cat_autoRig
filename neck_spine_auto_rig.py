@@ -542,7 +542,7 @@ class SpineNeckAutoRig(object):
 		"""Create and organize neck joint chains (forward/backward, stretch/non-stretch)."""
 		# 1 Create the base spine joints along the curve
 		
-		self.joint_on_curve(self.neck_curve, 'neck', 4)
+		self.joint_on_curve(self.neck_curve, 'neck', 5)
 		
 		# Create main groups
 		self.neck_joints_grp = AutoRigHelpers.create_empty_group("grp_neckJnts_0001", parent='joints')
