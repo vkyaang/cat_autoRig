@@ -205,3 +205,49 @@ class AutoRigHelpers(object):
 				pos = cmds.xform(cv_l, q=True, ws=True, t=True)
 				pos[0] *= -1  # Mirror X only
 				cmds.xform(cvs_r[i], ws=True, t=pos)
+
+	@classmethod
+	# ======================
+	# Final Shape Mirror Utility
+	# ======================
+	def mirror_all_right_shapes(self):
+		"""Mirror all right-side control shapes from their left counterparts (ignores moveAll)."""
+		print("🔁 Starting final shape mirroring pass (ctrl_r_ only)...")
+		
+		# Find all right-side controls in the scene
+		right_ctrls = [c for c in cmds.ls(type="transform") if c.startswith("ctrl_r_")]
+		if not right_ctrls:
+			print("⚠️ No right-side controls found (ctrl_r_)")
+			return
+		
+		mirrored_count = 0
+		for ctrl_r in right_ctrls:
+			ctrl_l = ctrl_r.replace("_r_", "_l_")
+			if not cmds.objExists(ctrl_l):
+				print(f"⚠️ Left control not found for: {ctrl_r}")
+				continue
+			
+			# Get shape nodes
+			shapes_r = cmds.listRelatives(ctrl_r, shapes=True, type="nurbsCurve", fullPath=True) or []
+			shapes_l = cmds.listRelatives(ctrl_l, shapes=True, type="nurbsCurve", fullPath=True) or []
+			if not shapes_l or not shapes_r:
+				print(f"⚠️ Missing shapes on: {ctrl_r} or {ctrl_l}")
+				continue
+			
+			# Mirror CVs
+			for shape_l, shape_r in zip(shapes_l, shapes_r):
+				cvs_l = cmds.ls(f"{shape_l}.cv[*]", flatten=True)
+				cvs_r = cmds.ls(f"{shape_r}.cv[*]", flatten=True)
+				if len(cvs_l) != len(cvs_r):
+					print(f"⚠️ Shape mismatch: {shape_l} vs {shape_r}")
+					continue
+				
+				for i, cv_l in enumerate(cvs_l):
+					pos = cmds.xform(cv_l, q=True, ws=True, t=True)
+					pos[0] *= -1  # mirror on X
+					cmds.xform(cvs_r[i], ws=True, t=pos)
+				
+				mirrored_count += 1
+				print(f"✅ Mirrored: {ctrl_l} → {ctrl_r}")
+		
+		print(f"✅ Finished mirroring all right shapes. Total mirrored: {mirrored_count}")
