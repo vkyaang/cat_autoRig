@@ -21,15 +21,7 @@ TEMP_JOINTS = {
 
 class LimbsAutoRig(object):
     def __init__(self):
-        vars_to_init = [
-            "ik_grp", "fk_grp", "root_ctrl_grp", "ctrl_grp",
-            "l_ft_leg_joints", "r_ft_leg_joints", "l_bk_leg_joints", "r_bk_leg_joints",
-            "l_ft_leg_fk_joints", "r_ft_leg_fk_joints", "l_ft_leg_ik_joints", "r_ft_leg_ik_joints",
-            "l_bk_leg_fk_joints", "r_bk_leg_fk_joints", "l_bk_leg_ik_joints", "r_bk_leg_ik_joints",
-            "l_scapula_ctrl", "r_scapula_ctrl", "l_scapula_joints", "r_scapula_joints",
-        ]
-        for var in vars_to_init:
-            setattr(self, var, None)
+        pass
     
     # ======================
     # Utility Functions
@@ -124,10 +116,8 @@ class LimbsAutoRig(object):
         leg_root = self.ensure_group("grp_legJnts_0001", JOINTS_GRP)
         rig_grp = self.ensure_group(f"grp_{side}_{region}_legJnts_0001", leg_root)
         for root in [base_chain[0], fk_chain[0], ik_chain[0]]:
-            try:
-                cmds.parent(root, rig_grp)
-            except:
-                pass
+            cmds.parent(root, rig_grp)
+           
 
     def create_ctrl_groups(self, side, region):
         """Build controller group hierarchy for FK/IK legs"""
@@ -160,20 +150,51 @@ class LimbsAutoRig(object):
             else:
                 cmds.parent(zero_grp, prev_ctrl)
 
-            cmds.orientConstraint(fk_ctrl, jnt, mo=False)
+            cmds.parentConstraint(fk_ctrl, jnt, mo=False)
             prev_ctrl = fk_ctrl
 
     def build_ik_setup(self, side, region):
         """Create a simple IK placeholder locator"""
         ik_chain = getattr(self, f"{side}_{region}_leg_ik_joints", [])
-        if not ik_chain:
-            return
 
-        ball_jnt = next((j for j in ik_chain if "ball" in j), ik_chain[-1])
-        loc_name = f"loc_{side}_{region}_foot_0001"
+        # create ik controllers
+        self.create_ik_controllers(side, region, ik_chain)
+    
+    def create_ik_controllers(self, side, region, ik_chain):
+        foot_ctrl_name = f'ctrl_{side}_{region}_footIk_0001'
+        foot_ctrl = cmds.createNode('joint', n=foot_ctrl_name)
+        AutoRigHelpers.create_control_hierarchy(foot_ctrl)
+        zero_grp, offset_grp, *_ = AutoRigHelpers.get_parent_grp(foot_ctrl)
+        foot_ctrl_temp = crv_lib.circle(name=f'crv_{side}_{region}_footIk_0001')
+        foot_ctrl_shape = cmds.listRelatives(foot_ctrl_temp, shapes=True, fullPath=True)
+        cmds.parent(zero_grp, getattr(self, f"{side}_{region}_leg_ik_grp"))
+        
+        # parent shape to control joint
+        cmds.parent(foot_ctrl_shape, foot_ctrl, relative=True, shape=True)
+        cmds.delete(foot_ctrl_temp)
+        cmds.delete(foot_ctrl, ch=True)
+        AutoRigHelpers.set_attr(foot_ctrl, 'drawStyle', 2)
+        
+        foot_jnt = ik_chain[3]
+        # create temp locators
+        loc_name = f"loc_{side}_{region}_foot_up_0001"
         loc = cmds.spaceLocator(n=loc_name)[0]
-        cmds.matchTransform(loc, ball_jnt, pos=True, rot=False)
-        cmds.parent(loc, getattr(self, f"{side}_{region}_leg_ik_grp"))
+        cmds.matchTransform(loc, foot_jnt, pos=True, rot=False)
+        cmds.matchTransform(zero_grp, foot_jnt, pos=True, rot=False)
+        # move loc up
+        AutoRigHelpers.set_attr(loc, 'translateY', AutoRigHelpers.get_attr(loc, 'translateY') + 5)
+        # aim constraint
+        aim_cons = cmds.aimConstraint(loc,
+                                      zero_grp,
+                                      aimVector=(0,1,0),
+                                      upVector=(1,0,0),
+                                      wut='object',
+                                      wuo=ik_chain[-1],
+                                      mo=False)[0]
+        cmds.delete(aim_cons)
+        
+        # create ik hierachy
+        
 
     # ======================
     # Scapula
