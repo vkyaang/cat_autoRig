@@ -9,325 +9,264 @@ from auto_rig_helpers import AutoRigHelpers
 crv_lib = curve_library.RigCurveLibrary()
 
 MOVE_ALL_CTRL = 'ctrl_c_moveAll_0002'
-COG_OFF_CTRL = 'ctrl_cog_off_0001'
 RIG_NODES_LOCAL_GRP = 'rigNodesLocal'
-CONTROLS_GRP = 'controls'
 JOINTS_GRP = 'joints'
 
-TEMP_FT_LEG_JOINTS = 'temp_l_ft_upperLeg_0001'
-TEMP_BK_LEG_JOINTS = 'temp_l_bk_upperLeg_0001'
-TEMP_SCAPULA = 'temp_l_scapula_0001'
+TEMP_JOINTS = {
+    "ft": "temp_l_ft_upperLeg_0001",
+    "bk": "temp_l_bk_upperLeg_0001",
+    "scapula": "temp_l_scapula_0001"
+}
 
 
 class LimbsAutoRig(object):
-	def __init__(self):
-		self.r_scapula_ctrl = None
-		self.l_scapula_ctrl = None
-		self.r_scapula_joints = None
-		self.l_scapula_joints = None
-		self.l_ft_leg_joints = []
-		self.r_ft_leg_joints = []
-		self.l_bk_leg_joints = []
-		self.r_bk_leg_joints = []
-		self.l_ft_leg_fk_joints = []
-		self.r_ft_leg_fk_joints = []
-		self.l_ft_leg_ik_joints = []
-		self.r_ft_leg_ik_joints = []
-		self.l_bk_leg_fk_joints = []
-		self.r_bk_leg_fk_joints = []
-		self.l_bk_leg_ik_joints = []
-		self.r_bk_leg_ik_joints = []
+    def __init__(self):
+        vars_to_init = [
+            "ik_grp", "fk_grp", "root_ctrl_grp", "ctrl_grp",
+            "l_ft_leg_joints", "r_ft_leg_joints", "l_bk_leg_joints", "r_bk_leg_joints",
+            "l_ft_leg_fk_joints", "r_ft_leg_fk_joints", "l_ft_leg_ik_joints", "r_ft_leg_ik_joints",
+            "l_bk_leg_fk_joints", "r_bk_leg_fk_joints", "l_bk_leg_ik_joints", "r_bk_leg_ik_joints",
+            "l_scapula_ctrl", "r_scapula_ctrl", "l_scapula_joints", "r_scapula_joints",
+        ]
+        for var in vars_to_init:
+            setattr(self, var, None)
+    
+    # ======================
+    # Utility Functions
+    # ======================
+    def ensure_group(self, name, parent=None):
+        """Create or return group"""
+        if cmds.objExists(name):
+            return name
+        if parent and not cmds.objExists(parent):
+            cmds.createNode("transform", n=parent)
+        return cmds.createNode("transform", n=name, p=parent) if parent else cmds.createNode("transform", n=name)
 
-	def side_tag(self, side, name):
-		return name.replace('_c_', f'_{side}_')
+    def _store(self, name, value):
+        """Convenience for self variable assignment"""
+        setattr(self, name, value)
+        return value
 
-	def create_joints(self, temp_jnt, mirror=True):
-		if not cmds.objExists(temp_jnt):
-			cmds.warning(f"Missing template joint: {temp_jnt}")
-			return [], []
+    def _strip_index(self, name):
+        parts = name.split("_")
+        if parts and parts[-1].isdigit():
+            parts = parts[:-1]
+        return "_".join(parts)
 
-		new_root = cmds.duplicate(temp_jnt, rc=True)[0]
-		all_joints = cmds.listRelatives(new_root, ad=True, type='joint') or []
-		all_joints.append(new_root)
-		all_joints.reverse()
+    def _duplicate_chain_with_suffix(self, source_chain, suffix):
+        """Duplicate chain and rename with _fk_/_ik_ while keeping anatomy terms"""
+        if not source_chain:
+            cmds.warning("Empty source chain to duplicate.")
+            return []
 
-		new_chain = []
-		for jnt in all_joints:
-			new_name = jnt.replace("temp", "jnt").replace("0002", "0001")
-			new_name = cmds.rename(jnt, new_name)
-			new_chain.append(new_name)
+        dup_root = cmds.duplicate(source_chain[0], rc=True)[0]
+        all_joints = cmds.listRelatives(dup_root, ad=True, type='joint') or []
+        all_joints.append(dup_root)
+        all_joints.reverse()  # root → leaf
 
-		mirrored_chain = []
-		if mirror:
-			mirrored_chain = cmds.mirrorJoint(
-				new_chain[0],
-				mirrorYZ=True,
-				mirrorBehavior=True,
-				searchReplace=('_l_', '_r_')
-			)
+        new_chain = []
+        for jnt in all_joints:
+            base = self._strip_index(jnt)
+            new_name = f"{base}_{suffix.lower()}_0001"
+            try:
+                new_chain.append(cmds.rename(jnt, new_name))
+            except:
+                new_chain.append(jnt)
+        return new_chain
 
-		self.auto_store_chains(temp_jnt, new_chain, mirrored_chain)
-		return new_chain, mirrored_chain
+    # ======================
+    # Base Joints
+    # ======================
+    def create_base_joints(self, region):
+        """Duplicate temp chain → rename cleanly → mirror → store"""
+        temp = TEMP_JOINTS.get(region)
+        if not cmds.objExists(temp):
+            cmds.warning(f"Missing template joint: {temp}")
+            return
 
-	def auto_store_chains(self, temp_name, left_chain, right_chain):
-		if "ft" in temp_name:
-			self.l_ft_leg_joints = left_chain
-			self.r_ft_leg_joints = right_chain
-		elif "bk" in temp_name:
-			self.l_bk_leg_joints = left_chain
-			self.r_bk_leg_joints = right_chain
-		elif "scapula" in temp_name:
-			self.l_scapula_joints = left_chain
-			self.r_scapula_joints = right_chain
-	
-	def duplicate_chain(self, source_chain, suffix):
-		"""
-		Duplicate an existing joint chain and rename with lowercase suffix.
-		Example:
-			jnt_l_ft_upperLeg_0001 → jnt_l_ft_upperLeg_fk_0001
-			jnt_l_ft_lowerLeg_0003 → jnt_l_ft_lowerLeg_fk_0001
-		"""
-		if not source_chain:
-			cmds.warning("⚠️ Empty source chain passed to duplicate_chain.")
-			return []
-		
-		# Duplicate full hierarchy
-		dup_root = cmds.duplicate(source_chain[0], rc=True)[0]
-		all_joints = cmds.listRelatives(dup_root, ad=True, type='joint') or []
-		all_joints.append(dup_root)
-		all_joints.reverse()  # parent → child
-		
-		new_chain = []
-		for jnt in all_joints:
-			# remove any old fk/ik label
-			if "_fk_" in jnt:
-				jnt = jnt.replace("_fk_", "_")
-			if "_ik_" in jnt:
-				jnt = jnt.replace("_ik_", "_")
-			
-			# find last underscore for numeric part
-			if "_" in jnt:
-				parts = jnt.split("_")
-				if parts[-1].isdigit():
-					# remove the numeric part and rebuild
-					base_name = "_".join(parts[:-1])
-				else:
-					base_name = jnt
-			else:
-				base_name = jnt
-			
-			# append new suffix and reset index to _0001
-			new_name = f"{base_name}_{suffix.lower()}_0001"
-			new_name = cmds.rename(jnt, new_name)
-			new_chain.append(new_name)
-		
-		print(f"✅ Duplicated {suffix.lower()} chain: {new_chain}")
-		return new_chain
-	
-	def create_fk_ik_leg_joints(self, side, joint_chain):
-		if not joint_chain:
-			cmds.warning(f"Empty chain for {side} side.")
-			return
+        new_root = cmds.duplicate(temp, rc=True)[0]
+        all_joints = cmds.listRelatives(new_root, ad=True, type='joint') or []
+        all_joints.append(new_root)
+        all_joints.reverse()
 
-		region = "ft" if "ft" in joint_chain[0] else "bk"
+        new_chain = []
+        for jnt in all_joints:
+            name = jnt.replace("temp", "jnt").replace("0002", "0001")
+            new_chain.append(cmds.rename(jnt, name))
 
-		fk_chain = self.duplicate_chain(joint_chain, "fK")
-		ik_chain = self.duplicate_chain(joint_chain, "iK")
-		
-		
-		attr_fk = f"{side}_{region}_leg_fk_joints"
-		attr_ik = f"{side}_{region}_leg_ik_joints"
-		setattr(self, attr_fk, fk_chain)
-		setattr(self, attr_ik, ik_chain)
+        mirrored_chain = cmds.mirrorJoint(
+            new_chain[0],
+            mirrorYZ=True,
+            mirrorBehavior=True,
+            searchReplace=('_l_', '_r_')
+        )
 
-		# Create main leg joint group once
-		if not cmds.objExists("grp_legJnts_0001"):
-			cmds.createNode("transform", n="grp_legJnts_0001", p=JOINTS_GRP)
+        self._store(f"l_{region}_leg_joints", new_chain)
+        self._store(f"r_{region}_leg_joints", mirrored_chain)
 
-		# Create side-region group (like grp_l_ft_legJnts_0001)
-		rig_grp = f"grp_{side}_{region}_legJnts_0001"
-		if not cmds.objExists(rig_grp):
-			cmds.createNode("transform", n=rig_grp, p="grp_legJnts_0001")
+    # ======================
+    # FK / IK Setup
+    # ======================
+    def create_fk_ik_chains(self, side, region):
+        """Duplicate and rename for FK/IK"""
+        base_chain = getattr(self, f"{side}_{region}_leg_joints", [])
+        if not base_chain:
+            cmds.warning(f"No base chain found for {side}_{region}.")
+            return
 
-		cmds.parent(joint_chain[0], rig_grp)
-		cmds.parent(fk_chain[0], rig_grp)
-		cmds.parent(ik_chain[0], rig_grp)
-	
-	def build_fk_setup(self, side, joint_chain):
-		region = "ft" if "ft" in joint_chain[0] else "bk"
-		
-		# main FK group
-		if not cmds.objExists("grp_legCtrls_0001"):
-			cmds.createNode("transform", n="grp_legCtrls_0001", p=MOVE_ALL_CTRL)
-		
-		fk_grp = f"grp_{side}_{region}_legFkCtrls_0001"
-		if not cmds.objExists(fk_grp):
-			cmds.createNode("transform", n=fk_grp, p="grp_legCtrls_0001")
-		
-		prev_ctrl = None
-		for jnt in joint_chain[:-1]:
-			ctrl_name = jnt.replace("jnt", "ctrl")
-			fk_ctrl = crv_lib.create_cube_curve(ctrl_name)
-			cmds.matchTransform(fk_ctrl, jnt)
-			
-			# create hierarchy (zero → offset → ctrl)
-			AutoRigHelpers.create_control_hierarchy(fk_ctrl, 2)
-			
-			# get zero and offset groups by name
-			zero_grp = fk_ctrl.replace("ctrl", "zero")
-			offset_grp = fk_ctrl.replace("ctrl", "offset")
-			
-			# parent properly
-			if prev_ctrl is None:
-				cmds.parent(zero_grp, fk_grp)
-			else:
-				cmds.parent(zero_grp, prev_ctrl)
-			
-			# constraint (rotation only for FK)
-			cmds.orientConstraint(fk_ctrl, jnt, mo=False)
-			
-			prev_ctrl = fk_ctrl
-	
-	def create_scapula_joint(self, side, temp_joint):
-		# === Main scapula group (root under joints) ===
-		scapula_root_grp = 'grp_scapulaJnts_0001'
-		if not cmds.objExists(scapula_root_grp):
-			cmds.createNode('transform', n=scapula_root_grp, p=JOINTS_GRP)
-		
-		# === Create both side subgroups ===
-		side_grps = {}
-		for s in ['l', 'r']:
-			side_grp = f'grp_{s}_scapulaJnts_0001'
-			if not cmds.objExists(side_grp):
-				side_grp = cmds.createNode('transform', n=side_grp, p=scapula_root_grp)
-			side_grps[s] = side_grp
-		
-		# === Only build once (on left); mirroring handles right ===
-		if not cmds.objExists('jnt_l_scapula_0001'):
-			l_scapula_joints, r_scapula_joints = self.create_joints(temp_joint, mirror=True)
-			
-			# Parent cleanly
-			if l_scapula_joints and cmds.objExists(side_grps['l']):
-				cmds.parent(l_scapula_joints[0], side_grps['l'])
-			if r_scapula_joints and cmds.objExists(side_grps['r']):
-				cmds.parent(r_scapula_joints[0], side_grps['r'])
-			
-			# Store for later access
-			self.l_scapula_joints = l_scapula_joints
-			self.r_scapula_joints = r_scapula_joints
-			
-		else:
-			print("Scapula joints already exist — skipping creation.")
-	
-	def create_scapula_ctrls(self, side, joint_chain):
-		# MAIN group
-		scapula_ctrl_grp = 'grp_scapulaCtrls_0001'
-		if not cmds.objExists(scapula_ctrl_grp):
-			cmds.createNode('transform', n='grp_scapulaCtrls_0001', p=MOVE_ALL_CTRL)
-		
-		# Side groups
-		side_grps = {}
-		for s in ['l', 'r']:
-			side_grp = f'grp_{s}_scapulaCtrls_0001'
-			if not cmds.objExists(side_grp):
-				side_grp = cmds.createNode('transform', n=side_grp, p=scapula_ctrl_grp)
-			side_grps[s] = side_grp
-		
-		# Create single scapula controller for this side
-		if not joint_chain:
-			cmds.warning(f"⚠️ No joints found for scapula on side '{side}'")
-			return
-		
-		jnt = joint_chain[0]  # scapula joint is usually single
-		ctrl_name = f'ctrl_{side}_scapula_0001'
-		
-		ctrl = crv_lib.create_prism_line(ctrl_name)
-		cmds.matchTransform(ctrl, jnt)
-		
-		# create hierarchy (zero → offset → ctrl)
-		AutoRigHelpers.create_control_hierarchy(ctrl, 2)
-		zero_grp = ctrl.replace("ctrl", "zero")
-		cmds.parent(zero_grp, side_grps[side])
-		
-		cmds.parentConstraint(ctrl, jnt, mo=False)
-		
-		print(f"✅ Created scapula control: {ctrl}")
-		
-		# ⚙️ Mirror only the SHAPE if this is the right side
-		if side == 'r':
-			left_ctrl = ctrl.replace('_r_', '_l_')
-			if cmds.objExists(left_ctrl):
-				AutoRigHelpers.mirror_curve_shape(left_ctrl, ctrl)
-				print(f"🔁 Mirrored shape from {left_ctrl} → {ctrl}")
-			else:
-				cmds.warning(f"⚠️ Left control not found for shape mirror: {left_ctrl}")
-		
-		# 🔹 Store controller reference for this side
-		setattr(self, f"{side}_scapula_ctrl", ctrl)
-	
-	def create_scapula_orient(self, side, joint_chain):
-		orient_grp = 'grp_scapula_orient_0001'
-		if not cmds.objExists(orient_grp):
-			cmds.createNode('transform', n=orient_grp, p=RIG_NODES_LOCAL_GRP)
-		
-		side_grps = {}
-		loc_locals = []
-		
-		for s in ['l', 'r']:
-			side_grp = f'grp_{s}_scapulaOrient_0001'
-			offset_grp = f'offset_{s}_scapulaOrient_0001'
-			loc_local_name = f'loc_{s}_scapula_local_0001'
-			loc_world_name = f'loc_{s}_scapula_world_0001'
-			
-			# ensure groups exist
-			if not cmds.objExists(side_grp):
-				side_grp = cmds.createNode('transform', n=side_grp, p=orient_grp)
-			if not cmds.objExists(offset_grp):
-				offset_grp = cmds.createNode('transform', n=offset_grp, p=side_grp)
-			
-			# ensure locators exist
-			if not cmds.objExists(loc_local_name):
-				loc_local = cmds.spaceLocator(n=loc_local_name)[0]
-				cmds.parent(loc_local, offset_grp)
-			else:
-				loc_local = loc_local_name
-			
-			if not cmds.objExists(loc_world_name):
-				loc_world = cmds.spaceLocator(n=loc_world_name)[0]
-				cmds.parent(loc_world, offset_grp)
-			else:
-				loc_world = loc_world_name
-			
-			# match transform for alignment
-			if getattr(self, f'{s}_scapula_joints', None):
-				cmds.matchTransform(side_grp, getattr(self, f'{s}_scapula_joints')[0])
-			
-			# ✅ Always append the locator name
-			loc_locals.append(loc_local)
-			side_grps[s] = side_grp
-		
-		print(f'✅ Stored local locators: {loc_locals}')
-		# self.loc_scapula_locals = loc_locals
-	
-	def create_scapula_setup(self, side):
-		self.create_scapula_joint(side, TEMP_SCAPULA)
-		self.create_scapula_ctrls(side, getattr(self, f'{side}_scapula_joints'))
-		self.create_scapula_orient(side, getattr(self, f'{side}_scapula_joints'))
-	
-	def create_leg_setup(self, side):
-		# create joints
-		self.create_fk_ik_leg_joints(side, getattr(self, f"{side}_ft_leg_joints"))
-		self.create_fk_ik_leg_joints(side, getattr(self, f"{side}_bk_leg_joints"))
-		
-		# create fk setup
-		self.build_fk_setup(side, getattr(self, f"{side}_ft_leg_fk_joints"))
-		self.build_fk_setup(side, getattr(self, f"{side}_bk_leg_fk_joints"))
+        fk_chain = self._duplicate_chain_with_suffix(base_chain, "fk")
+        ik_chain = self._duplicate_chain_with_suffix(base_chain, "ik")
 
-	def construct_rig(self):
-		self.create_joints(TEMP_FT_LEG_JOINTS, mirror=True)
-		self.create_joints(TEMP_BK_LEG_JOINTS, mirror=True)
-		
-		for side in ["l", "r"]:
-			# create scapula
-			self.create_scapula_setup(side)
-			self.create_leg_setup(side)
+        self._store(f"{side}_{region}_leg_fk_joints", fk_chain)
+        self._store(f"{side}_{region}_leg_ik_joints", ik_chain)
+
+        # organize joints
+        leg_root = self.ensure_group("grp_legJnts_0001", JOINTS_GRP)
+        rig_grp = self.ensure_group(f"grp_{side}_{region}_legJnts_0001", leg_root)
+        for root in [base_chain[0], fk_chain[0], ik_chain[0]]:
+            try:
+                cmds.parent(root, rig_grp)
+            except:
+                pass
+
+    def create_ctrl_groups(self, side, region):
+        """Build controller group hierarchy for FK/IK legs"""
+        ctrl_root = self.ensure_group("grp_legCtrls_0001", MOVE_ALL_CTRL)
+        ctrl_grp = self.ensure_group(f"grp_{side}_{region}_legCtrls_0001", ctrl_root)
+        fk_grp = self.ensure_group(f"grp_{side}_{region}_legFkCtrls_0001", ctrl_grp)
+        ik_grp = self.ensure_group(f"grp_{side}_{region}_legIkCtrls_0001", ctrl_grp)
+
+        self._store(f"{side}_{region}_leg_ctrl_grp", ctrl_grp)
+        self._store(f"{side}_{region}_leg_fk_grp", fk_grp)
+        self._store(f"{side}_{region}_leg_ik_grp", ik_grp)
+
+    def build_fk_setup(self, side, region):
+        """Create FK controls"""
+        fk_chain = getattr(self, f"{side}_{region}_leg_fk_joints", [])
+        if not fk_chain:
+            return
+
+        fk_grp = getattr(self, f"{side}_{region}_leg_fk_grp", None)
+        prev_ctrl = None
+        for jnt in fk_chain[:-1]:
+            ctrl_name = jnt.replace("jnt", "ctrl")
+            fk_ctrl = crv_lib.create_cube_curve(ctrl_name)
+            cmds.matchTransform(fk_ctrl, jnt)
+            AutoRigHelpers.create_control_hierarchy(fk_ctrl, 2)
+
+            zero_grp = fk_ctrl.replace("ctrl", "zero")
+            if prev_ctrl is None:
+                cmds.parent(zero_grp, fk_grp)
+            else:
+                cmds.parent(zero_grp, prev_ctrl)
+
+            cmds.orientConstraint(fk_ctrl, jnt, mo=False)
+            prev_ctrl = fk_ctrl
+
+    def build_ik_setup(self, side, region):
+        """Create a simple IK placeholder locator"""
+        ik_chain = getattr(self, f"{side}_{region}_leg_ik_joints", [])
+        if not ik_chain:
+            return
+
+        ball_jnt = next((j for j in ik_chain if "ball" in j), ik_chain[-1])
+        loc_name = f"loc_{side}_{region}_foot_0001"
+        loc = cmds.spaceLocator(n=loc_name)[0]
+        cmds.matchTransform(loc, ball_jnt, pos=True, rot=False)
+        cmds.parent(loc, getattr(self, f"{side}_{region}_leg_ik_grp"))
+
+    # ======================
+    # Scapula
+    # ======================
+    def create_scapula_joint(self):
+        """Duplicate scapula joints left/right"""
+        temp_joint = TEMP_JOINTS["scapula"]
+        if not cmds.objExists(temp_joint):
+            cmds.warning(f"Missing scapula template: {temp_joint}")
+            return
+
+        root = self.ensure_group("grp_scapulaJnts_0001", JOINTS_GRP)
+        l_grp = self.ensure_group("grp_l_scapulaJnts_0001", root)
+        r_grp = self.ensure_group("grp_r_scapulaJnts_0001", root)
+
+        l_chain_root = cmds.duplicate(temp_joint, rc=True)[0]
+        l_chain = [l_chain_root] + (cmds.listRelatives(l_chain_root, ad=True, type='joint') or [])
+        l_chain = [cmds.rename(j, j.replace("temp", "jnt").replace("0002", "0001")) for j in l_chain]
+        cmds.parent(l_chain[0], l_grp)
+
+        print(l_chain)
+        r_chain = cmds.mirrorJoint(l_chain[0], mirrorYZ=True, mirrorBehavior=True, searchReplace=("_l_", "_r_"))
+        cmds.parent(r_chain[0], r_grp)
+
+        self._store("l_scapula_joints", l_chain)
+        self._store("r_scapula_joints", r_chain)
+
+    def create_scapula_ctrls(self):
+        """Create scapula controls for L/R"""
+        ctrl_root = self.ensure_group("grp_scapulaCtrls_0001", MOVE_ALL_CTRL)
+
+        for side in ["l", "r"]:
+            side_grp = self.ensure_group(f"grp_{side}_scapulaCtrls_0001", ctrl_root)
+            chain = getattr(self, f"{side}_scapula_joints", [])
+            if not chain:
+                continue
+
+            jnt = chain[0]
+            ctrl_name = f"ctrl_{side}_scapula_0001"
+            ctrl = crv_lib.create_prism_line(ctrl_name)
+            cmds.matchTransform(ctrl, jnt)
+            AutoRigHelpers.create_control_hierarchy(ctrl, 2)
+            zero_grp = ctrl.replace("ctrl", "zero")
+            cmds.parent(zero_grp, side_grp)
+            cmds.parentConstraint(ctrl, jnt, mo=False)
+
+            if side == "r":
+                left_ctrl = ctrl.replace("_r_", "_l_")
+                if cmds.objExists(left_ctrl):
+                    AutoRigHelpers.mirror_curve_shape(left_ctrl, ctrl)
+
+            self._store(f"{side}_scapula_ctrl", ctrl)
+
+    def create_scapula_orient(self):
+        """Create scapula orientation helper locators"""
+        root = self.ensure_group("grp_scapula_orient_0001", RIG_NODES_LOCAL_GRP)
+        for side in ["l", "r"]:
+            side_grp = self.ensure_group(f"grp_{side}_scapulaOrient_0001", root)
+            offset_grp = self.ensure_group(f"offset_{side}_scapulaOrient_0001", side_grp)
+
+            # loc_local = self.ensure_group(f"loc_{side}_scapula_local_0001", offset_grp)
+            loc_local = cmds.spaceLocator(n=f"loc_{side}_scapula_local_0001")
+            cmds.parent(loc_local, offset_grp)
+            loc_world = cmds.spaceLocator(n=f"loc_{side}_scapula_world_0001")
+            cmds.parent(loc_world, offset_grp)
+
+            chain = getattr(self, f"{side}_scapula_joints", [])
+            if chain:
+                cmds.matchTransform(side_grp, chain[0])
+
+            self._store(f"{side}_scapula_local_loc", loc_local)
+            self._store(f"{side}_scapula_world_loc", loc_world)
+
+    # ======================
+    # Main Rig Constructor
+    # ======================
+    def construct_rig(self):
+        """Build the entire rig once"""
+        # base joints
+        for region in ["ft", "bk"]:
+            self.create_base_joints(region)
+
+        # scapula
+        self.create_scapula_joint()
+        self.create_scapula_ctrls()
+        self.create_scapula_orient()
+
+        # legs
+        for side in ["l", "r"]:
+            for region in ["ft", "bk"]:
+                self.create_fk_ik_chains(side, region)
+                self.create_ctrl_groups(side, region)
+                self.build_fk_setup(side, region)
+                self.build_ik_setup(side, region)
+
+        print("✅ Rig construction completed successfully!")
