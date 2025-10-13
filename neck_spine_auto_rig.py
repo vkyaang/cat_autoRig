@@ -791,6 +791,7 @@ class SpineNeckAutoRig(object):
 				
 				AutoRigHelpers.lock_hide_attr(belly_ctrl, ['sx', 'sy', 'sz', 'v'])
 				belly_ctrls.append(belly_ctrl)
+				cmds.parentConstraint(belly_ctrl, jnt, mo=False)
 				continue
 			else:
 				belly_ctrl = crv_lib.create_cube_curve(ctrl_name)
@@ -804,7 +805,7 @@ class SpineNeckAutoRig(object):
 				cmds.parent(AutoRigHelpers.get_parent_grp(belly_off_ctrl)[2], belly_ctrl)
 				AutoRigHelpers.lock_hide_attr(belly_ctrl, ['sx', 'sy', 'sz', 'v'])
 				AutoRigHelpers.lock_hide_attr(belly_off_ctrl, ['sx', 'sy', 'sz', 'v'])
-				
+				cmds.parentConstraint(belly_off_ctrl, jnt, mo=False)
 				belly_ctrls.append(belly_ctrl)
 				belly_ctrls.append(belly_off_ctrl)
 				

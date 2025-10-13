@@ -461,6 +461,79 @@ class RigCurveLibrary(object):
 		crv = cmds.curve(d=degree, p=points, k=knots, n=name)
 		
 		return crv
+	
+	@classmethod
+	def create_lollipop_round(cls, name="crv_lollipop_round"):
+		"""
+		Create a 'lollipop'-style rounded control curve using the provided CV data.
+		The shape will be cubic (d=3), smooth, and properly closed at the *bottom*.
+		"""
+		import maya.cmds as cmds
+		
+		# CV data reordered so the last (closing) CV is the *bottom/stick* position
+		points = [
+			[0.0, 0.0, 4.200835800833189],  # top of the head
+			[0.14250059713649532, 0.0, 0.0904995298629434],
+			[1.107288881249637, 0.0, -0.8303719518471747],
+			[1.0084497546476305, 0.0, -2.077950261453218],
+			[0.0, 0.0, -2.4956638268000866],  # bottom center (stick start)
+			[-1.0084497546476305, 0.0, -2.077950261453218],
+			[-1.107288881249637, 0.0, -0.8303719518471749],
+			[-0.14250059713649532, 0.0, 0.09049952986294707],
+			[0.0, 0.0, 4.200835800833189],  # close back to top
+			[0.0, 0.0, -2.4956638268000866]  # explicit bottom closing point
+		]
+		
+		# Create cubic NURBS curve
+		crv = cmds.curve(d=3, p=points, n=name)
+		
+		# Ensure curve closes cleanly at the *bottom* rather than top
+		cmds.closeCurve(crv, ch=False, ps=False, rpo=True, bb=0.5, bki=False)
+		
+		# Freeze transforms
+		cmds.makeIdentity(crv, apply=True, t=1, r=1, s=1, n=0)
+		
+		return crv
+	
+	@classmethod
+	def create_ten_cross(cls, name="crv_cross"):
+		"""
+		Create a 'cross' style control curve.
+		Shape: square border with a centered cross inside.
+		"""
+		import maya.cmds as cmds
+		
+		# Rounded + clean CVs from your saved data
+		points = [
+			[-2.0, 0.0, 0.499],
+			[-2.0, 0.0, -0.499],
+			[-0.499, 0.0, -0.499],
+			[-0.499, 0.0, -2.0],
+			[0.499, 0.0, -2.0],
+			[0.499, 0.0, -0.499],
+			[2.0, 0.0, -0.499],
+			[2.0, 0.0, 0.499],
+			[0.499, 0.0, 0.499],
+			[0.499, 0.0, 2.0],
+			[-0.499, 0.0, 2.0],
+			[-0.499, 0.0, 0.499],
+			[-2.0, 0.0, 0.499],  # close loop
+		]
+		
+		# Create linear curve (degree 1 = straight lines)
+		crv = cmds.curve(d=1, p=points, n=name)
+		
+		# Freeze transforms
+		cmds.makeIdentity(crv, apply=True, t=1, r=1, s=1, n=0)
+		
+		return crv
+
+
+
+
+
+
+
 
 
 
