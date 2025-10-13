@@ -3,23 +3,32 @@ import maya.cmds as cmds
 class AutoRigHelpers(object):
 	
 	@classmethod
-	def add_attr(cls, node, long_name, attr_type, default_value, min_value=None, max_value=None, keyable=True):
+	def add_attr(cls, node, long_name, attr_type, default_value=None, min_value=None, max_value=None, keyable=True,
+				 enum_names=None):
 		"""
-		Add attribute with optional min/max limits.
-		Skips flags if None is passed (to avoid Maya TypeError).
+		Add attribute with optional min/max limits or enum values.
+		Example:
+			AutoRigHelpers.add_attr(ctrl, 'stretch', 'float', 0, 0, 1)
+			AutoRigHelpers.add_attr(ctrl, 'space', 'enum', enum_names=['World', 'Local', 'Chest'])
 		"""
 		args = {
 			"longName": long_name,
-			"attributeType": attr_type,
-			"defaultValue": default_value,
 			"keyable": keyable,
 		}
 		
-		# Only include min/max if they exist
-		if min_value is not None:
-			args["minValue"] = min_value
-		if max_value is not None:
-			args["maxValue"] = max_value
+		if attr_type == 'enum':
+			if not enum_names:
+				raise ValueError("Enum attribute requires 'enum_names' list.")
+			args["attributeType"] = 'enum'
+			args["enumName"] = ":".join(enum_names)
+		else:
+			args["attributeType"] = attr_type
+			if default_value is not None:
+				args["defaultValue"] = default_value
+			if min_value is not None:
+				args["minValue"] = min_value
+			if max_value is not None:
+				args["maxValue"] = max_value
 		
 		cmds.addAttr(node, **args)
 	
@@ -248,6 +257,12 @@ class AutoRigHelpers(object):
 					cmds.xform(cvs_r[i], ws=True, t=pos)
 				
 				mirrored_count += 1
-				print(f"✅ Mirrored: {ctrl_l} → {ctrl_r}")
 		
-		print(f"✅ Finished mirroring all right shapes. Total mirrored: {mirrored_count}")
+	@classmethod
+	def lock_and_hide_ctrls(cls, ctrl=None):
+		if ctrl:
+			AutoRigHelpers.lock_hide_attr(ctrl, ['sx', 'sy', 'sz', 'v'])
+		else:
+			ctrls = [c for c in cmds.ls(type="transform") if c.startswith("ctrl")]
+			for c in ctrls:
+				AutoRigHelpers.lock_hide_attr(c, ['sx', 'sy', 'sz', 'v'])
