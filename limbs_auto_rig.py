@@ -43,6 +43,7 @@ class LimbsAutoRig(object):
         self.cog_ctrl = spine_rig.cog_off_ctrl
         self.pelvis_ik_ctrl = spine_rig.pelvis_ik_ctrl
         self.spine_joints = spine_rig.spine_joints
+        self.pelvis_ctrl = spine_rig.pelvis_ctrl
     
     # ======================
     # Utility Functions
@@ -776,20 +777,21 @@ class LimbsAutoRig(object):
         upperleg_ctrl = ctrls['upperleg']
         pv_ctrl = ctrls['pv']
         cog_ctrl = self.cog_ctrl
+        spine_01_jnt = self.spine_joints[0]
+        scapula_jnt = self.get(f'{side}_scapula_joints')[0]
         
         # === Create space root groups ===
         world_root_grp = self._ensure_group(f'grp_SpaceLocs_world_0001', parent=MOVE_ALL_CTRL)
         cog_root_grp = self._ensure_group(f'grp_SpaceLocs_cog_0001', parent=cog_ctrl)
-        upperleg_root_grp = self._ensure_group(f'grp_SpaceLocs_upperLeg_0001', parent=upperleg_ctrl)
         
-        datas = {
+        foot_datas = {
             "World": {"ctrl": MOVE_ALL_CTRL, "root": world_root_grp, "index": 0},
             "Cog": {"ctrl": cog_ctrl, "root": cog_root_grp, "index": 1},
             "Upperleg": {"ctrl": upperleg_ctrl, "root": upperleg_ctrl, "index": 2},
         }
         
-        locators = []
-        for label, info in datas.items():
+        foot_locators = []
+        for label, info in foot_datas.items():
             ctrl = info['ctrl']
             root = info['root']
             
@@ -799,14 +801,14 @@ class LimbsAutoRig(object):
             zero = AutoRigHelpers.get_parent_grp(loc)[3]
             cmds.parent(zero, root)
             AutoRigHelpers.set_attr(zero, 'visibility', False)
-            locators.append(loc)
+            foot_locators.append(loc)
         
         # Create one parentConstraint with all locators
-        cons = cmds.parentConstraint(locators, foot_offset, mo=False)[0]
+        cons = cmds.parentConstraint(foot_locators, foot_offset, mo=False)[0]
         AutoRigHelpers.set_attr(cons, 'interpType', 2)
 
         # === Create conditions for each locator target ===
-        for i, label in enumerate(datas.keys()):
+        for i, label in enumerate(foot_datas.keys()):
             cond = cmds.createNode('condition', n=f'cond_{side}_{region}_space{label}_0001')
             AutoRigHelpers.connect_attr(foot_ctrl, 'follow', cond, 'firstTerm')
             AutoRigHelpers.set_attr(cond, 'secondTerm', i)
@@ -818,7 +820,43 @@ class LimbsAutoRig(object):
             print(weight_aliases)
             target = weight_aliases[i]
             AutoRigHelpers.connect_attr(cond, 'outColorR', cons, f'{target}')
+            
+        # create knee pole vector space
+        pv_datas = {
+            "World": {"ctrl": MOVE_ALL_CTRL, "root": world_root_grp, "index": 0},
+            "Cog": {"ctrl": cog_ctrl, "root": cog_root_grp, "index": 1},
+            "foot": {"ctrl": foot_ctrl, "root": foot_datas, "index": 2},
+        }
         
+        # create aim joint
+        pv_aim_root_jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_kneePvIkSpaceFoot_0001')
+        pv_aim_end_jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_kneePvIkSpace{label}_end_0001')
+        cmds.matchTransform(pv_aim_root_jnt, upperleg_ctrl, pos=True, rot=False)
+        cmds.matchTransform(pv_aim_end_jnt, foot_ctrl, pos=True, rot=False)
+        cmds.parent(pv_aim_end_jnt, pv_aim_root_jnt)
+        
+        if side == 'l':
+            cmds.joint(
+                pv_aim_root_jnt,
+                e=True,
+                oj='xyz',  # orient joints in X (primary) → Y (secondary)
+                sao='ydown',  # secondary axis orientation = Y-up
+                ch=True,  # orient children
+                zso=True  # zero scale orientation
+            )
+        else:
+            cmds.joint(
+                pv_aim_root_jnt,
+                e=True,
+                oj='xyz',  # orient joints in X (primary) → Y (secondary)
+                sao='yup',  # secondary axis orientation = Y-up
+                ch=True,  # orient children
+                zso=True  # zero scale orientation
+            )
+        if region == 'ft':
+            cmds.parent(pv_aim_root_jnt, scapula_jnt)
+        # else:
+        #     cmds.parent()
     
     # ======================fq
     # Scapula
