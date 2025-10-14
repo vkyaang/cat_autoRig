@@ -67,6 +67,31 @@ class RigCurveLibrary(object):
 		
 		rec_line = cmds.curve(degree=1, point=points, name=name)
 		return rec_line
+	
+	@classmethod
+	def create_square_curve(cls, name="square_ctrl", size=2.0):
+		"""
+		Create a simple square control curve on the XZ plane.
+
+		Args:
+			name (str): name of the resulting control
+			size (float): half-length of the square side (2.0 → 4x4 square)
+
+		Returns:
+			str: the created curve transform name
+		"""
+		half = size
+		points = [
+			[-half, 0.0, half],  # CV[0]
+			[half, 0.0, half],  # CV[1]
+			[half, 0.0, -half],  # CV[2]
+			[-half, 0.0, -half],  # CV[3]
+			[-half, 0.0, half],  # CV[4] - close the loop
+		]
+		
+		square = cmds.curve(name=name, degree=1, point=points)
+		return square
+	
 	@classmethod
 	def create_rectangle_curve(cls, name="rectangle"):
 		points = [

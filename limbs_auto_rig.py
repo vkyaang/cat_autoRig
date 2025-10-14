@@ -338,9 +338,10 @@ class LimbsAutoRig(object):
         # create blend controller
         switch_ctrl = crv_lib.create_ten_cross(f'ctrl_{side}_{region}_leg_switch_0001')
         cmds.matchTransform(switch_ctrl, ankle_ik_jnt, pos=True, rot=False)
-        AutoRigHelpers.create_control_hierarchy(switch_ctrl, 1)
-        switch_zero = AutoRigHelpers.get_parent_grp(switch_ctrl)[3]
+        AutoRigHelpers.create_control_hierarchy(switch_ctrl, 2)
+        _, _, switch_zero, switch_offset = AutoRigHelpers.get_parent_grp(switch_ctrl)
         cmds.parent(switch_zero, ctrl_grp)
+        cmds.parentConstraint(ankle_ik_jnt, switch_offset, mo=True)
         # add and hide attr
         AutoRigHelpers.lock_hide_attr(switch_ctrl, ['tx', 'ty', 'tz', 'rx', 'ry', 'rz'])
         AutoRigHelpers.add_attr(switch_ctrl, 'ik_fk_switch', 'float', 0, 0, 1)

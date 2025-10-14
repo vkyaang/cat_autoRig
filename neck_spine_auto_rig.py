@@ -68,6 +68,7 @@ class SpineNeckAutoRig(object):
 		
 
 		self.neck_curve = "curve2"
+		self.tail_curve = 'curve3'
 	
 	def joint_on_curve(self, cv, name="spine", jntNum=7, span=7, store=True):
 		"""
@@ -957,6 +958,110 @@ class SpineNeckAutoRig(object):
 		
 		self.pelvis_ctrl = pelvis_ctrl
 		
+	def create_tail(self):
+		tail_joints = self.joint_on_curve(self.tail_curve, 'tail', 8)
+		tail_root = tail_joints[0]
+		
+		# create jnt grp
+		tail_jnt_grp = cmds.createNode('transform', n='grp_c_tailJnts_0001', p=JOINTS_GRP)
+		cmds.parent(tail_root, tail_jnt_grp)
+		
+		# clear end joint orientation
+		end_joint = tail_joints[-1]
+		for axis in ("X", "Y", "Z"):
+			cmds.setAttr(f"{end_joint}.jointOrient{axis}", 0)
+		
+		self.create_tail_ctrl(tail_joints)
+		
+	def create_tail_ctrl(self, tail_joints, sub_count=2):
+		# create ctrl group
+		ctrl_root_grp = cmds.createNode('transform', n='grp_c_tailCtrls_0001')
+		cmds.parent(ctrl_root_grp, self.pelvis_ctrl)
+		
+		# create fk controller
+		small_driven_groups = []
+		small_controls = []
+		prev_ctrl = None
+		
+		for i, jnt in enumerate(tail_joints[:-1]):
+			small_ctrl = crv_lib.circle(3, f'ctrl_c_tail_{i+1:04d}')
+			cmds.matchTransform(small_ctrl, jnt)
+			cmds.parentConstraint(small_ctrl, jnt, mo=False)
+			AutoRigHelpers.create_control_hierarchy(small_ctrl, 3)
+			_, small_zero, small_offset, small_driven = AutoRigHelpers.get_parent_grp(small_ctrl)
+			
+			if prev_ctrl is None:
+				cmds.parent(small_zero, ctrl_root_grp)
+			else:
+				cmds.parent(small_zero, prev_ctrl)
+			
+			prev_ctrl = small_ctrl
+			small_controls.append(small_ctrl)
+			small_driven_groups.append(small_driven)
+			
+		self.create_tail_sub_ctrls(tail_joints, ctrl_root_grp, small_driven_groups, small_controls)
+	
+	
+	def create_tail_sub_ctrls(self, tail_joints, root_ctrl_grp, driven_grp, small_ctrl, joints_per_ctrl=3, prefix='ctrl_c_tailDrv'):
+		"""
+		Create tail sub-controllers along the tail joint chain.
+		Each sub-controller drives a fixed number of joints (joints_per_ctrl).
+		Example:
+			tail_joints = 9, joints_per_ctrl = 3 → controllers at joints [0, 3, 6]
+		"""
+		# Create control group
+		ctrl_grp = cmds.createNode('transform', n='grp_c_tailDrvCtrls_0001', p=root_ctrl_grp)
+		
+		# Remove the terminal joint
+		chain = tail_joints[:-1]
+		n = len(chain)
+		if n == 0:
+			cmds.warning("No tail joints found.")
+			return []
+		
+		# Determine evenly spaced indices — e.g., [0, 3, 6]
+		step = max(1, joints_per_ctrl)
+		idxs = list(range(0, n, step))
+		
+		# ⚙️ Clamp last index to avoid duplication of last joint
+		if idxs[-1] >= n:
+			idxs[-1] = n - 1
+		
+		sub_ctrls = []
+		for i, idx in enumerate(idxs, 1):
+			jnt = chain[idx]
+			ctrl = crv_lib.create_square_curve(f"{prefix}_{i:04d}", 20)
+			cmds.matchTransform(ctrl, jnt)
+			
+			# Build hierarchy
+			AutoRigHelpers.create_control_hierarchy(ctrl, 2)
+			_, _, ctrl_zero, ctrl_offset = AutoRigHelpers.get_parent_grp(ctrl)
+			cmds.parent(ctrl_zero, ctrl_grp)
+			sub_ctrls.append(ctrl)
+			
+			# Constrain next range of joints to this control
+			start_idx = idx
+			end_idx = min(idx + step, n)
+			segment = driven_grp[start_idx:end_idx]
+			ctrl_segment = small_ctrl[start_idx:end_idx]
+			print(i)
+			print(ctrl_segment)
+			
+			# connect rotation
+			for seg_driven in segment:
+				for rot in ['rotateX','rotateY','rotateZ']:
+					AutoRigHelpers.connect_attr(ctrl, rot, seg_driven, rot)
+			
+			if i > 1:  # skip sub ctrl 001
+				# parent under small_ctrl at the start joint of its own range
+				parent_target_idx = idx-1  # start joint index of this segment
+				if parent_target_idx < len(small_ctrl):
+					parent_target = small_ctrl[parent_target_idx]
+					cmds.parent(ctrl_zero, parent_target)
+		
+			AutoRigHelpers.lock_hide_attr(ctrl, ['tx', 'ty', 'tz'])
+		return sub_ctrls
+	
 	def construct_rig(self):
 		self.create_cog()
 		
@@ -983,6 +1088,11 @@ class SpineNeckAutoRig(object):
 		
 		# head orient
 		self.setup_head_orient()
+		
+		# create tail
+		self.create_tail()
+		
+		AutoRigHelpers.lock_and_hide_ctrls()
 #
 # if __name__ == "__main__":
 # 	spine_neck_rig = SpineNeckAutoRig()
