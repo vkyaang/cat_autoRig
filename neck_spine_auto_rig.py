@@ -20,6 +20,7 @@ LOC_COG = 'loc_c_cog_0001'
 class SpineNeckAutoRig(object):
 	
 	def __init__(self):
+		self.chest_buffer_grp = None
 		self.pelvis_ctrl = None
 		self.cog_jnt = None
 		self.belly_joints = None
@@ -448,9 +449,14 @@ class SpineNeckAutoRig(object):
 		AutoRigHelpers.connect_attr(chest_tangent_ctrl, "rotate", self.chest_ik_jnt, 'rotate')
 		AutoRigHelpers.connect_attr(chest_tangent_ctrl, "tangent_length", self.chest_ik_jnt, 'sz')
 		
+		# create group under chest
+		chest_buffer_grp = cmds.createNode('transform', n=f'grp_c_chestIk_buffer_0001', p=chest_ik_ctrl)
+		cmds.pointConstraint(self.spine_joints[-1], chest_buffer_grp, mo=True)
+		
 		self.pelvis_ik_ctrl = pelvis_ik_ctrl
 		self.chest_ik_ctrl = chest_ik_ctrl
 		self.spine_switch_ctrl = spine_switch_ctrl
+		self.chest_buffer_grp = chest_buffer_grp
 	
 	@classmethod
 	def setup_stretch(cls, name, detail, str_chain, crv, last_jnt=True):
@@ -935,9 +941,10 @@ class SpineNeckAutoRig(object):
 		AutoRigHelpers.connect_attr(rmp_local_world_trans, 'outputX', neck_cons, f'{loc_head_orient_local}W0')
 		
 	def create_pelvis(self):
+		pelvis_grp = cmds.createNode('transform', n='grp_c_pelvisJnts_0001', p=JOINTS_GRP)
 		pelvis_jnt = cmds.createNode('joint', n='jnt_c_pelvis_0001')
 		cmds.matchTransform(pelvis_jnt, self.pelvis_ik_ctrl, pos=True, rot=False)
-		cmds.parent(pelvis_jnt, JOINTS_GRP)
+		cmds.parent(pelvis_jnt, pelvis_grp)
 		
 		# create controller
 		pelvis_ctrl = crv_lib.create_cube_curve('ctrl_c_pelvis_0001')
@@ -945,6 +952,8 @@ class SpineNeckAutoRig(object):
 		AutoRigHelpers.create_control_hierarchy(pelvis_ctrl, 2)
 		pelvis_zero = AutoRigHelpers.get_parent_grp(pelvis_ctrl)[2]
 		cmds.parent(pelvis_zero, self.pelvis_ik_ctrl)
+		
+		cmds.parentConstraint(pelvis_ctrl, pelvis_jnt, mo=False)
 		
 		self.pelvis_ctrl = pelvis_ctrl
 		

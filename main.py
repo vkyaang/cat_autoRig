@@ -22,5 +22,5 @@ neck_spine_rig = neck_spine_auto_rig.SpineNeckAutoRig()
 neck_spine_rig.construct_rig()
 
 # build limbs
-# limbs_rig = limbs_auto_rig.LimbsAutoRig(neck_spine_rig)
-# limbs_rig.construct_rig()
+limbs_rig = limbs_auto_rig.LimbsAutoRig(neck_spine_rig)
+limbs_rig.construct_rig()
