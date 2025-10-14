@@ -36,9 +36,21 @@ PIVOT_TEMP_JOINTS = {
     ]
 }
 
+TOE_TEMP_JOINTS = {
+    "ft": ['temp_l_ft_thumb_metacarple_0001',
+           'temp_l_ft_index_metacarple_0001',
+           'temp_l_ft_middle_metacarple_0001',
+           'temp_l_ft_ring_metacarple_0001',
+           'temp_l_ft_pinky_metacarple_0001'],
+    "bk": ['temp_l_bk_index_metacarple_0001',
+           'temp_l_bk_middle_metacarple_0001',
+           'temp_l_bk_ring_metacarple_0001',
+           'temp_l_bk_pinky_metacarple_0001']
+}
+
 
 class LimbsAutoRig(object):
-    def __init__(self, spine_rig:SpineNeckAutoRig):
+    def __init__(self, spine_rig: SpineNeckAutoRig):
         self.spine_rig = spine_rig
         self.cog_ctrl = spine_rig.cog_off_ctrl
         self.pelvis_ik_ctrl = spine_rig.pelvis_ik_ctrl
@@ -75,6 +87,10 @@ class LimbsAutoRig(object):
             "fk_controls": self.get(f'{side}_{region}_fk_ctrls'),
             "fk_offset_grps": self.get(f'{side}_{region}_fk_offset_grps'),
             
+            # # toe controls:
+            # "toe_fk_ctrls": self.get(f"{side}_{region}_toe_ctrls_dict"),
+            # "toe_ctrl_grp": self.get(f"{side}_{region}_toe_ctrls_grp"),
+            
             # IK Helper Groups
             "legRollAimGrp": self.get(f"{side}_{region}_leg_roll_aim_grp"),
             "legRollOffset": self.get(f"{side}_{region}_legRoll_offset"),
@@ -88,12 +104,20 @@ class LimbsAutoRig(object):
             'upperleg_ik_offset': self.get(f"{side}_{region}_upperlegIk_offset"),
             
             # Optional Joints (if stored)
+            "legJnts": self.get(f"{side}_{region}_leg_joints"),
             "legIkJnts": self.get(f"{side}_{region}_leg_ik_joints"),
             "legFkJnts": self.get(f"{side}_{region}_leg_fk_joints"),
             "legRollJnts": self.get(f"{side}_{region}_legRollAim_joints"),
+            ### toes
+            "thumb_jnts": self.get(f"{side}_ft_thumb_root"),
+            "index_jnts": self.get(f"{side}_{region}_index_root"),
+            "middle_jnts": self.get(f"{side}_{region}_middle_root"),
+            "ring_jnts": self.get(f"{side}_{region}_ring_root"),
+            "pinky_jnts": self.get(f"{side}_{region}_pinky_root"),
             
             # group
-            "leg_joints_grp": self.get(f"grp_{side}_{region}_legJnts")
+            "leg_joints_grp": self.get(f"grp_{side}_{region}_legJnts"),
+            "leg_ctrls_grp": self.get(f"{side}_{region}_leg_ctrl_grp")
         }
     
     def _ensure_group(self, name, parent=None):
@@ -123,24 +147,24 @@ class LimbsAutoRig(object):
             new_name = j.replace("temp", "jnt").replace("0002", "0001")
             out.append(cmds.rename(j, new_name))
         return out
-
+    
     def _strip_index(self, name):
         parts = name.split("_")
         if parts and parts[-1].isdigit():
             parts = parts[:-1]
         return "_".join(parts)
-
+    
     def _duplicate_chain_with_suffix(self, source_chain, suffix):
         """Duplicate chain and rename with _fk_/_ik_ while keeping anatomy terms"""
         if not source_chain:
             cmds.warning("Empty source chain to duplicate.")
             return []
-
+        
         dup_root = cmds.duplicate(source_chain[0], rc=True)[0]
         all_joints = cmds.listRelatives(dup_root, ad=True, type='joint') or []
         all_joints.append(dup_root)
         all_joints.reverse()  # root → leaf
-
+        
         new_chain = []
         for jnt in all_joints:
             base = self._strip_index(jnt)
@@ -169,41 +193,81 @@ class LimbsAutoRig(object):
         if not cmds.objExists(temp):
             cmds.warning(f"Missing template joint: {temp}")
             return
-
+        
         new_root = cmds.duplicate(temp, rc=True)[0]
         all_joints = cmds.listRelatives(new_root, ad=True, type='joint') or []
         all_joints.append(new_root)
         all_joints.reverse()
-
+        
         new_chain = []
         for jnt in all_joints:
             name = jnt.replace("temp", "jnt").replace("0002", "0001")
             new_chain.append(cmds.rename(jnt, name))
-
+        
         mirrored_chain = cmds.mirrorJoint(
             new_chain[0],
             mirrorYZ=True,
             mirrorBehavior=True,
             searchReplace=('_l_', '_r_')
         )
-
+        
         self._store(f"l_{region}_leg_joints", new_chain)
         self._store(f"r_{region}_leg_joints", mirrored_chain)
-    
-    def create_pivot_joints(self, region):
+
+
+    def create_toe_joints(self, region):
         """Create and store pivot joints (heelPivot, footOutPivot, toeRvs) for both sides."""
-        pivots = PIVOT_TEMP_JOINTS.get(region, [])
-    
-        piv_root = self._ensure_group("grp_legPivots_0001", JOINTS_GRP)
+        toe_joints = TOE_TEMP_JOINTS.get(region, [])
         
         # Left and right pivot groups under region root
         side_grps = {
-            "l": self._ensure_group(f"grp_l_{region}_legPivots_0001", piv_root),
-            "r": self._ensure_group(f"grp_r_{region}_legPivots_0001", piv_root)
+            "l": self._ensure_group(f"grp_l_{region}_toeJnts_0001", self.get(f"grp_l_{region}_legJnts")),
+            "r": self._ensure_group(f"grp_r_{region}_toeJnts_0001", self.get(f"grp_r_{region}_legJnts"))
         }
         
+        all_toes = {"l": [], "r": []}
+        for src in toe_joints:
+            # duplicate L source and rename
+            l_root = cmds.duplicate(src, rc=True)[0]
+            
+            l_chain = self._rename_chain_temp_to_jnt(self._ordered_chain(l_root))
+            # mirror to right side
+            r_chain = cmds.mirrorJoint(
+                l_chain[0],
+                mirrorYZ=True,
+                mirrorBehavior=True,
+                searchReplace=("_l_", "_r_")
+            )
+            
+            # anatomy name (e.g. heelPivot / footOutPivot / toeRvs)
+            parts = l_chain[0].split("_")
+            anatomy = "_".join(parts[3:-2]) if len(parts) > 4 else parts[3]
+            
+            # store automatically by side name
+            for side, chain in zip(["l", "r"], [l_chain, r_chain]):
+                grp = side_grps[side]
+                cmds.parent(chain[0], grp)
+                self._store(f"{side}_{region}_{anatomy}_root", chain)
+                self._store(f"{side}_{region}_{anatomy}_chain", chain)
+                
+                all_toes[side].extend(chain)
+                
+            for side in ["l", "r"]:
+                combined_name = f"{side}_{region}_toe_joints"
+                self._store(combined_name, all_toes[side])
+                
+                # Also store toe joint groups for easy access
+            self._store(f"grp_l_{region}_toeJnts_0001", side_grps["l"])
+            self._store(f"grp_r_{region}_toeJnts_0001", side_grps["r"])
+    def create_pivot_joints(self, region):
+        """Create and store pivot joints (heelPivot, footOutPivot, toeRvs) for both sides."""
+        pivots = PIVOT_TEMP_JOINTS.get(region, [])
+        
+        piv_root = self._ensure_group("grp_legPivots_0001", JOINTS_GRP)
+        
+        
         for src in pivots:
-           
+            
             # duplicate L source and rename
             l_root = cmds.duplicate(src, rc=True)[0]
             
@@ -225,8 +289,8 @@ class LimbsAutoRig(object):
                 self._store(f"{side}_{region}_{anatomy}_root", chain)
                 self._store(f"{side}_{region}_{anatomy}_chain", chain)
                 self._store(f"{side}_{region}_{anatomy}_jnt", chain[0])
-            
-    
+                
+                
     # ======================
     # FK / IK Setup
     # ======================
@@ -236,13 +300,13 @@ class LimbsAutoRig(object):
         if not base_chain:
             cmds.warning(f"No base chain found for {side}_{region}.")
             return
-
+        
         fk_chain = self._duplicate_chain_with_suffix(base_chain, "fk")
         ik_chain = self._duplicate_chain_with_suffix(base_chain, "ik")
-
+        
         self._store(f"{side}_{region}_leg_fk_joints", fk_chain)
         self._store(f"{side}_{region}_leg_ik_joints", ik_chain)
-
+        
         # organize joints
         leg_root = self._ensure_group("grp_legJnts_0001", JOINTS_GRP)
         rig_grp = self._ensure_group(f"grp_{side}_{region}_legJnts_0001", leg_root)
@@ -250,7 +314,7 @@ class LimbsAutoRig(object):
             cmds.parent(root, rig_grp)
         
         self._store(f"grp_{side}_{region}_legJnts", rig_grp)
-        
+    
     def create_ik_fk_blend(self, side, region):
         self.build_fk_setup(side, region)
         self.build_ik_setup(side, region)
@@ -278,7 +342,7 @@ class LimbsAutoRig(object):
         switch_zero = AutoRigHelpers.get_parent_grp(switch_ctrl)[3]
         cmds.parent(switch_zero, ctrl_grp)
         # add and hide attr
-        AutoRigHelpers.lock_hide_attr(switch_ctrl, ['tx','ty','tz','rx','ry','rz'])
+        AutoRigHelpers.lock_hide_attr(switch_ctrl, ['tx', 'ty', 'tz', 'rx', 'ry', 'rz'])
         AutoRigHelpers.add_attr(switch_ctrl, 'ik_fk_switch', 'float', 0, 0, 1)
         
         # create reverse
@@ -291,27 +355,27 @@ class LimbsAutoRig(object):
             AutoRigHelpers.set_attr(cons, 'interpType', 2)
             AutoRigHelpers.connect_attr(switch_ctrl, 'ik_fk_switch', cons, f'{fk}W0')
             AutoRigHelpers.connect_attr(rvs_node, 'outputX', cons, f'{ik}W1')
-
+        
         AutoRigHelpers.connect_attr(switch_ctrl, 'ik_fk_switch', fk_ctrl_grp, 'visibility')
         AutoRigHelpers.connect_attr(rvs_node, 'outputX', ik_ctrl_grp, 'visibility')
-        
+    
     def create_ctrl_groups(self, side, region):
         """Build controller group hierarchy for FK/IK legs"""
         ctrl_root = self._ensure_group("grp_legCtrls_0001", self.cog_ctrl)
         ctrl_grp = self._ensure_group(f"grp_{side}_{region}_legCtrls_0001", ctrl_root)
         fk_grp = self._ensure_group(f"grp_{side}_{region}_legFkCtrls_0001", ctrl_grp)
         ik_grp = self._ensure_group(f"grp_{side}_{region}_legIkCtrls_0001", ctrl_grp)
-
+        
         self._store(f"{side}_{region}_leg_ctrl_grp", ctrl_grp)
         self._store(f"{side}_{region}_leg_fk_grp", fk_grp)
         self._store(f"{side}_{region}_leg_ik_grp", ik_grp)
-
+    
     def build_fk_setup(self, side, region):
         """Create FK controls"""
         fk_chain = getattr(self, f"{side}_{region}_leg_fk_joints", [])
         if not fk_chain:
             return
-
+        
         fk_grp = getattr(self, f"{side}_{region}_leg_fk_grp", None)
         prev_ctrl = None
         fk_offsets = []
@@ -322,33 +386,33 @@ class LimbsAutoRig(object):
             
             cmds.matchTransform(fk_ctrl, jnt)
             AutoRigHelpers.create_control_hierarchy(fk_ctrl, 2)
-
+            
             zero_grp = fk_ctrl.replace("ctrl", "zero")
             offset_grp = fk_ctrl.replace("ctrl", "offset")
             if prev_ctrl is None:
                 cmds.parent(zero_grp, fk_grp)
             else:
                 cmds.parent(zero_grp, prev_ctrl)
-
+            
             cmds.parentConstraint(fk_ctrl, jnt, mo=False)
             prev_ctrl = fk_ctrl
             fk_offsets.append(offset_grp)
             fk_ctrls.append(fk_ctrl)
         
-        AutoRigHelpers.add_attr(fk_ctrls[0], 'local_world', 'float', 0, 0 ,1)
-            
+        AutoRigHelpers.add_attr(fk_ctrls[0], 'local_world', 'float', 0, 0, 1)
+        
         self._store(f'{side}_{region}_fk_offset_grps', fk_offsets)
         self._store(f'{side}_{region}_fk_ctrls', fk_ctrls)
-
+    
     def build_ik_setup(self, side, region):
         """Create a simple IK placeholder locator"""
         ik_chain = getattr(self, f"{side}_{region}_leg_ik_joints", [])
-
+        
         # create ik controllers
         self.create_ik_controllers(side, region, ik_chain)
         self.create_ikHnd(side, region, ik_chain)
         self.create_ik_stretch(side, region, ik_chain)
-        
+    
     def create_ikHnd(self, side, region, ik_chain):
         ball_jnt = ik_chain[3]
         ankle_jnt = ik_chain[2]
@@ -359,7 +423,7 @@ class LimbsAutoRig(object):
         
         # foot_ctrl = self.get(f"{side}_{region}_footIk_ctrl")
         ctrls = self._get_leg_data(side, region)
-        foot_ctrl  = ctrls['foot']
+        foot_ctrl = ctrls['foot']
         ball_ctrl = self.get(f"{side}_{region}_ball_ctrl")
         toe_ctrl = self.get(f"{side}_{region}_toe_ctrl")
         pv_ctrl = self.get(f"{side}_{region}_kneePvIk_ctrl")
@@ -382,34 +446,33 @@ class LimbsAutoRig(object):
         
         # ankle ikHnd
         ankle_ikHnd = cmds.ikHandle(sj=ankle_jnt,
-                                  ee=ball_jnt,
-                                  sol='ikSCsolver',
-                                  srp=True,
-                                  n=f'ikHnd_{side}_{region}_ankle_0001')[0]
+                                    ee=ball_jnt,
+                                    sol='ikSCsolver',
+                                    srp=True,
+                                    n=f'ikHnd_{side}_{region}_ankle_0001')[0]
         cmds.parent(ankle_ikHnd, ankle_roll_grp)
         AutoRigHelpers.set_attr(ankle_ikHnd, 'visibility', False)
         
         # ball ikHnd
         ball_ikHnd = cmds.ikHandle(sj=ball_jnt,
-                                    ee=toe_jnt,
-                                    sol='ikSCsolver',
-                                    srp=True,
-                                    n=f'ikHnd_{side}_{region}_ball_0001')[0]
+                                   ee=toe_jnt,
+                                   sol='ikSCsolver',
+                                   srp=True,
+                                   n=f'ikHnd_{side}_{region}_ball_0001')[0]
         cmds.parent(ball_ikHnd, ball_ctrl)
         AutoRigHelpers.set_attr(ball_ikHnd, 'visibility', False)
         
         # toe ikHnd
         toe_ikHnd = cmds.ikHandle(sj=toe_jnt,
-                                   ee=toe_end_jnt,
-                                   sol='ikSCsolver',
-                                   srp=True,
-                                   n=f'ikHnd_{side}_{region}_toe_0001')[0]
+                                  ee=toe_end_jnt,
+                                  sol='ikSCsolver',
+                                  srp=True,
+                                  n=f'ikHnd_{side}_{region}_toe_0001')[0]
         cmds.parent(toe_ikHnd, toe_ctrl)
         AutoRigHelpers.set_attr(toe_ikHnd, 'visibility', False)
         
         # create leg roll aim
         self.create_leg_roll_aim_jnt(side, region, ik_chain)
-        
     
     def create_leg_roll_aim_jnt(self, side, region, ik_chain):
         """
@@ -452,10 +515,10 @@ class LimbsAutoRig(object):
         
         # create ikHnd
         leg_roll_ikHnd = cmds.ikHandle(sj=ball_jnt,
-                                  ee=upperleg_jnt,
-                                  sol='ikRPsolver',
-                                  srp=True,
-                                  n=f'ikHnd_{side}_{region}_legRollAim_0001')[0]
+                                       ee=upperleg_jnt,
+                                       sol='ikRPsolver',
+                                       srp=True,
+                                       n=f'ikHnd_{side}_{region}_legRollAim_0001')[0]
         AutoRigHelpers.set_attr(leg_roll_ikHnd, 'visibility', False)
         # pole vector
         cmds.poleVectorConstraint(pv_ctrl, leg_roll_ikHnd)
@@ -484,7 +547,7 @@ class LimbsAutoRig(object):
         AutoRigHelpers.set_attr(ball_jnt, 'visibility', False)
         # Store for easy access later
         self._store(f"{side}_{region}_legRollAim_joints", [ball_jnt, upperleg_jnt])
-        
+    
     def create_ik_controllers(self, side, region, ik_chain):
         foot_jnt = ik_chain[3]
         ankle_jnt = ik_chain[2]
@@ -510,7 +573,7 @@ class LimbsAutoRig(object):
         AutoRigHelpers.add_attr(foot_ctrl, 'upper_leg_stretch', 'float', 0)
         AutoRigHelpers.add_attr(foot_ctrl, 'knee_stretch', 'float', 0)
         AutoRigHelpers.add_attr(foot_ctrl, 'ankle_stretch', 'float', 0)
-        AutoRigHelpers.add_attr(foot_ctrl, 'follow', 'enum', enum_names=['World','Cog','UpperLeg'])
+        AutoRigHelpers.add_attr(foot_ctrl, 'follow', 'enum', enum_names=['World', 'Cog', 'UpperLeg'])
         AutoRigHelpers.add_attr(foot_ctrl, 'foot_bank', 'float', 0, -1, 1)
         AutoRigHelpers.add_attr(foot_ctrl, 'heel_roll', 'float', 0, -1, 1)
         
@@ -524,8 +587,8 @@ class LimbsAutoRig(object):
         # aim constraint
         aim_cons = cmds.aimConstraint(loc,
                                       foot_zero,
-                                      aimVector=(0,1,0),
-                                      upVector=(1,0,0),
+                                      aimVector=(0, 1, 0),
+                                      upVector=(1, 0, 0),
                                       wut='object',
                                       wuo=ik_chain[-1],
                                       mo=False)[0]
@@ -537,13 +600,13 @@ class LimbsAutoRig(object):
         AutoRigHelpers.create_control_hierarchy(heel_ctrl, 2)
         _, _, heel_zero, heel_offset = AutoRigHelpers.get_parent_grp(heel_ctrl)
         cmds.parent(heel_zero, foot_ctrl)
-
+        
         toe_pivot_ctrl = crv_lib.create_diamond_sphere(f'ctrl_{side}_{region}_toePivotIk_0001')
         cmds.matchTransform(toe_pivot_ctrl, getattr(self, f"{side}_{region}_heelPivot_root")[1])
         AutoRigHelpers.create_control_hierarchy(toe_pivot_ctrl, 2)
-        _, _, toe_pivot_zero, toe_pivot_offset= AutoRigHelpers.get_parent_grp(toe_pivot_ctrl)
+        _, _, toe_pivot_zero, toe_pivot_offset = AutoRigHelpers.get_parent_grp(toe_pivot_ctrl)
         cmds.parent(toe_pivot_zero, heel_ctrl)
-
+        
         foot_out_ctrl = crv_lib.create_diamond_sphere(f'ctrl_{side}_{region}_footOutPivotIk_0001')
         cmds.matchTransform(foot_out_ctrl, getattr(self, f"{side}_{region}_footOutPivot_root")[0])
         AutoRigHelpers.create_control_hierarchy(foot_out_ctrl, 2)
@@ -575,7 +638,7 @@ class LimbsAutoRig(object):
         AutoRigHelpers.create_control_hierarchy(leg_roll_aim_grp, 2)
         _, _, leg_roll_aim_zero, leg_roll_aim_offset = AutoRigHelpers.get_parent_grp(leg_roll_aim_grp)
         cmds.parent(leg_roll_aim_zero, ball_ctrl)
-
+        
         leg_roll_ctrl = crv_lib.create_cube_curve(f'ctrl_{side}_{region}_legRoll_0001')
         cmds.matchTransform(leg_roll_ctrl, foot_ctrl)
         AutoRigHelpers.create_control_hierarchy(leg_roll_ctrl, 2)
@@ -584,7 +647,7 @@ class LimbsAutoRig(object):
         cmds.orientConstraint(leg_roll_ctrl, leg_roll_aim_grp, mo=True)
         
         # add leg roll ctrl attr
-        AutoRigHelpers.lock_hide_attr(leg_roll_ctrl, ['tx','ty','tz'])
+        AutoRigHelpers.lock_hide_attr(leg_roll_ctrl, ['tx', 'ty', 'tz'])
         AutoRigHelpers.add_attr(leg_roll_ctrl, 'roll_active', 'float', 0, 0, 1)
         
         # create ankle roll
@@ -606,14 +669,14 @@ class LimbsAutoRig(object):
             AutoRigHelpers.set_attr(pv_ik_zero, 'translateY', -5)
         elif region == 'bk' and side == 'l':
             AutoRigHelpers.set_attr(pv_ik_zero, 'translateY', 5)
-            
+        
         cmds.parent(pv_ik_zero, getattr(self, f"{side}_{region}_leg_ik_grp"))
         AutoRigHelpers.set_attr(pv_ik_zero, 'rotateX', 0)
         AutoRigHelpers.set_attr(pv_ik_zero, 'rotateY', 0)
         AutoRigHelpers.set_attr(pv_ik_zero, 'rotateZ', 0)
         # create attrs
         AutoRigHelpers.add_attr(pv_ik_ctrl, 'follow', 'enum', enum_names=['World', 'Cog', 'Foot'])
-        AutoRigHelpers.lock_hide_attr(pv_ik_ctrl, ['rx','ry','rz'])
+        AutoRigHelpers.lock_hide_attr(pv_ik_ctrl, ['rx', 'ry', 'rz'])
         
         # create annotation
         anno_loc = cmds.spaceLocator(n=f"annotationLoc_{side}_{region}_kneePvIk_0001")[0]
@@ -640,7 +703,7 @@ class LimbsAutoRig(object):
         _, _, upperleg_zero, upperleg_offset = AutoRigHelpers.get_parent_grp(upperleg_ctrl)
         cmds.parent(upperleg_zero, getattr(self, f"{side}_{region}_leg_ik_grp"))
         cmds.parentConstraint(upperleg_ctrl, upperleg_jnt)
-    
+        
         self._store(f"{side}_{region}_footIk_ctrl", foot_ctrl)
         self._store(f"{side}_{region}_footIk_offset", foot_offset)
         self._store(f"{side}_{region}_heelPivotIk_ctrl", heel_ctrl)
@@ -664,7 +727,7 @@ class LimbsAutoRig(object):
         self._store(f"{side}_{region}_ankle_roll_grp", ankle_roll_grp)
         
         self._store(f"{side}_{region}_legRoll_offset", leg_roll_offset)
-        
+    
     def create_ik_stretch(self, side, region, ik_chain):
         """
         create ik stretch setup
@@ -752,7 +815,6 @@ class LimbsAutoRig(object):
         AutoRigHelpers.connect_attr(ind_pma, 'output3Dx', upperleg_jnt, 'scaleX')
         AutoRigHelpers.connect_attr(ind_pma, 'output3Dy', knee_jnt, 'scaleX')
         AutoRigHelpers.connect_attr(ind_pma, 'output3Dz', ankle_jnt, 'scaleX')
-        
     
     def set_driven_key(self, side, region):
         """Set Driven key for foot bank and heel roll"""
@@ -834,7 +896,7 @@ class LimbsAutoRig(object):
         # Create one parentConstraint with all locators
         cons = cmds.parentConstraint(foot_locators, foot_offset, mo=False)[0]
         AutoRigHelpers.set_attr(cons, 'interpType', 2)
-
+        
         # === Create conditions for each locator target ===
         for i, label in enumerate(foot_datas.keys()):
             cond = cmds.createNode('condition', n=f'cond_{side}_{region}_footSpace{label}_0001')
@@ -842,12 +904,12 @@ class LimbsAutoRig(object):
             AutoRigHelpers.set_attr(cond, 'secondTerm', i)
             AutoRigHelpers.set_attr(cond, 'colorIfTrueR', 1)
             AutoRigHelpers.set_attr(cond, 'colorIfFalseR', 0)
-
+            
             # Get the correct alias weight name
             weight_aliases = cmds.parentConstraint(cons, q=True, wal=True)
             target = weight_aliases[i]
             AutoRigHelpers.connect_attr(cond, 'outColorR', cons, f'{target}')
-            
+        
         # === Create knee pvik space
         world_knee_root_grp = self._ensure_group(f'grp_kneePvIkSpaceLocs_world_0001', parent=world_root_grp)
         cog_knee_root_grp = self._ensure_group(f'grp_kneePvIkSpaceLocs_cog_0001', parent=cog_root_grp)
@@ -876,7 +938,7 @@ class LimbsAutoRig(object):
                 ch=True,  # orient children
                 zso=True  # zero scale orientation
             )
-
+        
         AutoRigHelpers.create_control_hierarchy(pv_aim_root_jnt, 1)
         pv_aim_root_zero = AutoRigHelpers.get_parent_grp(pv_aim_root_jnt)[3]
         AutoRigHelpers.set_attr(pv_aim_root_zero, 'visibility', False)
@@ -885,8 +947,9 @@ class LimbsAutoRig(object):
         else:
             cmds.parent(pv_aim_root_zero, spine_01_jnt)
         
-        cmds.aimConstraint(foot_ctrl, pv_aim_root_jnt, aimVector=(1,0,0), upVector=(0,1,0),worldUpType='none', mo=False)
-            
+        cmds.aimConstraint(foot_ctrl, pv_aim_root_jnt, aimVector=(1, 0, 0), upVector=(0, 1, 0), worldUpType='none',
+                           mo=False)
+        
         # create knee pole vector space
         pv_datas = {
             "World": {"ctrl": MOVE_ALL_CTRL, "root": world_knee_root_grp, "index": 0},
@@ -917,7 +980,7 @@ class LimbsAutoRig(object):
             AutoRigHelpers.set_attr(cond, 'secondTerm', i)
             AutoRigHelpers.set_attr(cond, 'colorIfTrueR', 1)
             AutoRigHelpers.set_attr(cond, 'colorIfFalseR', 0)
-
+            
             # Get the correct alias weight name
             weight_aliases = cmds.parentConstraint(knee_cons, q=True, wal=True)
             target = weight_aliases[i]
@@ -947,7 +1010,7 @@ class LimbsAutoRig(object):
         loc_info = ['Local', 'World']
         locators = []
         
-        #--- orient for bk leg ---
+        # --- orient for bk leg ---
         if region == 'bk':
             for info in loc_info:
                 loc = cmds.spaceLocator(n=f'loc_{side}_{region}_leg_orient{info}_0001')[0]
@@ -955,7 +1018,7 @@ class LimbsAutoRig(object):
                 if info == 'World':
                     cmds.orientConstraint(MOVE_ALL_CTRL, loc, mo=True)
                 locators.append(loc)
-                
+            
             cmds.matchTransform(orient_root_grp, upperleg_ik_ctrl, pos=True, rot=False)
             # constraint orient group
             cmds.parentConstraint(pelvis_ctrl, orient_offset_grp, mo=True)
@@ -999,26 +1062,25 @@ class LimbsAutoRig(object):
     # Scapula
     # ======================
     
-    
     def create_scapula_joint(self):
         """Duplicate scapula joints left/right"""
         temp_joint = TEMP_JOINTS["scapula"]
         if not cmds.objExists(temp_joint):
             cmds.warning(f"Missing scapula template: {temp_joint}")
             return
-
+        
         root = self._ensure_group("grp_scapulaJnts_0001", JOINTS_GRP)
         l_grp = self._ensure_group("grp_l_scapulaJnts_0001", root)
         r_grp = self._ensure_group("grp_r_scapulaJnts_0001", root)
         
         self._store(f"grp_l_scapulaJnts_0001", l_grp)
         self._store(f"grp_r_scapulaJnts_0001", r_grp)
-
+        
         l_chain_root = cmds.duplicate(temp_joint, rc=True)[0]
         l_chain = [l_chain_root] + (cmds.listRelatives(l_chain_root, ad=True, type='joint') or [])
         l_chain = [cmds.rename(j, j.replace("temp", "jnt").replace("0002", "0001")) for j in l_chain]
         cmds.parent(l_chain[0], l_grp)
-
+        
         r_chain = cmds.mirrorJoint(l_chain[0], mirrorYZ=True, mirrorBehavior=True, searchReplace=("_l_", "_r_"))
         cmds.parent(r_chain[0], r_grp)
         
@@ -1057,21 +1119,20 @@ class LimbsAutoRig(object):
             
             self._store(f'{s}_scapula_aim_root_joints', scapula_aim_root)
             self._store(f'{s}_scapula_aim_end_joints', scapula_aim_end)
-
+        
         self._store("l_scapula_joints", l_chain)
         self._store("r_scapula_joints", r_chain)
-       
-
+    
     def create_scapula_ctrls(self):
         """Create scapula controls for L/R"""
         ctrl_root = self._ensure_group("grp_scapulaCtrls_0001", self.cog_ctrl)
-
+        
         for side in ["l", "r"]:
             side_grp = self._ensure_group(f"grp_{side}_scapulaCtrls_0001", ctrl_root)
             chain = getattr(self, f"{side}_scapula_joints", [])
             if not chain:
                 continue
-
+            
             jnt = chain[0]
             ctrl_name = f"ctrl_{side}_scapula_0001"
             ctrl = crv_lib.create_prism_line(ctrl_name)
@@ -1085,12 +1146,12 @@ class LimbsAutoRig(object):
             offset_grp = ctrl.replace("ctrl", "offset")
             cmds.parent(zero_grp, side_grp)
             cmds.parentConstraint(ctrl, jnt, mo=False)
-
+            
             if side == "r":
                 left_ctrl = ctrl.replace("_r_", "_l_")
                 if cmds.objExists(left_ctrl):
                     AutoRigHelpers.mirror_curve_shape(left_ctrl, ctrl)
-
+            
             self._store(f"{side}_scapula_ctrl", ctrl)
             self._store(f"{side}_scapula_offset", offset_grp)
     
@@ -1105,8 +1166,9 @@ class LimbsAutoRig(object):
         # create ikHnd
         if region == 'ft':
             aim_ikHnd = \
-            cmds.ikHandle(sj=scapula_aim_root, ee=scapula_aim_end, sol='ikSCsolver', n=f'ikHnd_{side}_scapulaAim_0001')[
-                0]
+                cmds.ikHandle(sj=scapula_aim_root, ee=scapula_aim_end, sol='ikSCsolver',
+                              n=f'ikHnd_{side}_scapulaAim_0001')[
+                    0]
             aim_ikHnd_grp = cmds.createNode('transform', n=f'grp_{side}_scapulaAim_ikHnd_0001')
             aim_ikHnd_offset = cmds.createNode('transform', n=aim_ikHnd_grp.replace('grp', 'offset'), p=aim_ikHnd_grp)
             
@@ -1119,7 +1181,7 @@ class LimbsAutoRig(object):
             # connect attr
             AutoRigHelpers.connect_attr(foot_ctrl, 'translateX', aim_ikHnd_offset, 'translateX')
             AutoRigHelpers.set_attr(scapula_aim_root, 'visibility', False)
-            
+    
     def create_scapula_orient(self, side, region):
         """Create scapula orientation helper locators"""
         spine07_jnt = self.spine_joints[-1]
@@ -1150,17 +1212,17 @@ class LimbsAutoRig(object):
         if region == 'ft':
             side_grp = self._ensure_group(f"grp_{side}_scapulaOrient_0001", root)
             offset_grp = self._ensure_group(f"offset_{side}_scapulaOrient_0001", side_grp)
-
+            
             # loc_local = self.ensure_group(f"loc_{side}_scapula_local_0001", offset_grp)
             loc_local = cmds.spaceLocator(n=f"loc_{side}_scapula_local_0001")[0]
             cmds.parent(loc_local, offset_grp)
             loc_world = cmds.spaceLocator(n=f"loc_{side}_scapula_world_0001")[0]
             cmds.parent(loc_world, offset_grp)
-
+            
             chain = getattr(self, f"{side}_scapula_joints", [])
             if chain:
                 cmds.matchTransform(side_grp, chain[0], pos=True, rot=False)
-                
+            
             # spine and body aim constraint
             offset_cons = cmds.parentConstraint(chest_buffer_grp, body_aim_orient_grp, offset_grp, mo=True)[0]
             AutoRigHelpers.set_attr(offset_cons, 'interpType', 2)
@@ -1173,51 +1235,198 @@ class LimbsAutoRig(object):
             # local loc constraint
             cmds.orientConstraint(scapula_aim_root, loc_local, mo=True)
             # local world constraint
-            cmds.orientConstraint(chest_buffer_grp, loc_world, skip=['y','z'])
+            cmds.orientConstraint(chest_buffer_grp, loc_world, skip=['y', 'z'])
             # constraint scapula ctrl
             cons = cmds.parentConstraint(loc_local, loc_world, scapula_offset, mo=True)[0]
             AutoRigHelpers.set_attr(cons, 'interpType', 2)
-
+            
             # create reverse
             rvs = cmds.createNode('reverse', n=f'rvs_{side}_scapula_autoRotate_0001')
             AutoRigHelpers.connect_attr(scapula_ctrl, 'auto_rotate', rvs, 'inputX')
             AutoRigHelpers.connect_attr(scapula_ctrl, 'auto_rotate', cons, f'{loc_local}W0')
             AutoRigHelpers.connect_attr(rvs, 'outputX', cons, f'{loc_world}W1')
-
+            
             self._store(f"{side}_scapula_local_loc", loc_local)
             self._store(f"{side}_scapula_world_loc", loc_world)
+    
+    # --- toe setup ---#
+    
+    def create_toe_ctrl(self, side, region):
+        """Create FK toe controls for front ('ft') or back ('bk') legs, with proper hierarchy."""
+        ctrls = self._get_leg_data(side, region)
+        leg_ctrl_grp = ctrls['leg_ctrls_grp']
+        ankle_jnt = ctrls['legJnts'][2]
+        ball_jnt = ctrls['legJnts'][3]
+        toe_jnt = ctrls['legJnts'][4]
+        
+        # === Define which toes exist per region ===
+        if region == "ft":
+            toe_names = ["thumb", "index", "middle", "ring", "pinky"]
+        else:  # back legs usually have only 4 toes
+            toe_names = ["index", "middle", "ring", "pinky"]
+        
+        # === Gather toe joint chains safely ===
+        toe_joints = []
+        for name in toe_names:
+            key = f"{name}_jnts"
+            if key in ctrls:
+                toe_joints.append(ctrls[key][:-1])  # skip end joint
+            else:
+                cmds.warning(f"[Rig] Missing joint chain for {side}_{region}_{name}")
+        
+        # === Create master toe controls group ===
+        ctrl_grp = self._ensure_group(f"grp_{side}_{region}_toeCtrls_0001", parent=leg_ctrl_grp)
+        buffer_grp = self._ensure_group(f"grp_buffer_{side}_{region}_toeCtrls_0001", parent=leg_ctrl_grp)
+        
+        # create toe overall ctrl
+        toes_all_ctrl = crv_lib.create_curved_double_arrow(f'ctrl_{side}_{region}_toesAll_0001')
+        AutoRigHelpers.add_attr(toes_all_ctrl, 'spread', 'float', 0, 0, 1)
+        AutoRigHelpers.add_attr(toes_all_ctrl, 'fist', 'float', 0, 0, 1)
+        cmds.matchTransform(toes_all_ctrl, toe_jnt)
+        AutoRigHelpers.create_control_hierarchy(toes_all_ctrl, 2)
+        _, _, toes_zero, toes_offset = AutoRigHelpers.get_parent_grp(toes_all_ctrl)
+        cmds.parent(toes_zero, ctrl_grp)
+        AutoRigHelpers.lock_hide_attr(toes_all_ctrl, ['tx','ty','tz'])
+        
+        all_toe_ctrls = {}
+        buffer_groups = {}
+        
+        # === Iterate through each toe ===
+        for toe_name, chain in zip(toe_names, toe_joints):
+            prev_ctrl = None
+            prev_buffer = None
+            toe_ctrls = []
+            buffers = []
+
+
+            for jnt in chain:
+                ctrl_name = jnt.replace("jnt", "ctrl")
+
+                parts = jnt.split("_")
+                part = parts[4]
+                buffer_name = f'offset_buffer_{side}_{region}_{toe_name}_{part}_0001'
+
+                ctrl = crv_lib.create_lollipop_ctrl(ctrl_name)
+                buffer = cmds.createNode('transform', n=buffer_name)
+
+                cmds.matchTransform(ctrl, jnt)
+                cmds.matchTransform(buffer, jnt)
+
+                # Build hierarchy
+                AutoRigHelpers.create_control_hierarchy(ctrl)
+                AutoRigHelpers.create_control_hierarchy(buffer, 1)
+                zero_grp, offset_grp, driven_grp, connect_grp = AutoRigHelpers.get_parent_grp(ctrl)
+                zero_buffer = AutoRigHelpers.get_parent_grp(buffer)[3]
+
+                # connect ctrl and buffer
+                for attr in ['tx','ty','tz','rx','ry','rz']:
+                    AutoRigHelpers.connect_attr(buffer, attr, offset_grp, attr)
+
+                # Parenting
+                if prev_ctrl is None:
+                    cmds.parent(zero_grp, ctrl_grp)  # root under toeCtrl group
+                    cmds.parent(zero_buffer, buffer_grp)
+                else:
+                    cmds.parent(zero_grp, prev_ctrl)  # child under previous control
+                    cmds.parent(zero_buffer, prev_buffer)
+
+                if "metacarple" in part.lower():
+                    driver = ankle_jnt
+                elif "base" in part.lower():
+                    driver = ball_jnt
+                elif "mid" in part.lower() in part.lower():
+                    driver = toe_jnt
+                    for attr in ['rx','ry','rz']:
+                        AutoRigHelpers.connect_attr(toes_all_ctrl, attr, connect_grp, attr)
+                else:
+                    driver = None
+                    if toe_name != 'thumb':
+                        for attr in ['rx','ry','rz']:
+                            AutoRigHelpers.connect_attr(toes_all_ctrl, attr, connect_grp, attr)
+
+                if driver and cmds.objExists(driver):
+                    cmds.parentConstraint(driver, buffer, mo=True)
+
+                # Constraint to drive joint
+                cmds.parentConstraint(ctrl, jnt, mo=False)
+
+                prev_ctrl = ctrl
+                prev_buffer = buffer
+                
+                # set driven key
+                self.toe_set_driven_key(side, region, toes_all_ctrl, driven_grp)
+
+                toe_ctrls.append(ctrl)
+                buffers.append(buffer)
+
+            # Store per toe
+            all_toe_ctrls[toe_name] = toe_ctrls
+            buffer_groups[toe_name] = buffers
+
+
+            # Store references for later access
+            self._store(f"{side}_{region}_toe_ctrls_dict", all_toe_ctrls)
+            self._store(f"{side}_{region}_toe_ctrls_grp", ctrl_grp)
+            self._store(f"{side}_{region}_toes_all_ctrl_grp", toes_all_ctrl)
             
+    
+    def toe_set_driven_key(self, side, region, toe_all_ctrl, driven_group):
+        """Set Driven key for foot bank and heel roll"""
+        
+        # spread key
+        if 'base' in driven_group:
+            # spread key 0
+            cmds.setDrivenKeyframe(f'{driven_group}.ry', cd=f'{toe_all_ctrl}.spread')
+            # spread key 1
+            if "pinky" in driven_group:
+                AutoRigHelpers.set_attr(toe_all_ctrl, 'spread', 1)
+                AutoRigHelpers.set_attr(f'{driven_group}', 'rotateY', 35)
+                cmds.setDrivenKeyframe(f'{driven_group}.ry', cd=f'{toe_all_ctrl}.spread')
+            elif "ring" in driven_group:
+                AutoRigHelpers.set_attr(toe_all_ctrl, 'spread', 1)
+                AutoRigHelpers.set_attr(f'{driven_group}', 'rotateY', 15)
+                cmds.setDrivenKeyframe(f'{driven_group}.ry', cd=f'{toe_all_ctrl}.spread')
             
-  
-  
+        
+        
+        
     # ======================
     # Main Rig Constructor
     # ======================
     def construct_rig(self):
-        """Build the entire rig once"""
-        # base joints
+        """Build the entire rig once with proper logical order."""
+        
+        # === 1. Base joint creation ===
         for region in ["ft", "bk"]:
             self.create_base_joints(region)
-            self.create_pivot_joints(region)
-
-        # scapula
+        
+        # === 2. Scapula base joints (depends only on spine) ===
         self.create_scapula_joint()
         self.create_scapula_ctrls()
-        # self.create_scapula_orient()
-
-        # legs
+        
+        # === 3. Build FK/IK chains and controller groups first ===
         for side in ["l", "r"]:
             for region in ["ft", "bk"]:
                 self.create_fk_ik_chains(side, region)
                 self.create_ctrl_groups(side, region)
+        
+        # === 4. Create toe and pivot joints (now leg groups exist) ===
+        for region in ["ft", "bk"]:
+            self.create_pivot_joints(region)
+            self.create_toe_joints(region)
+        
+        # === 5. IK/FK blending and mechanical systems ===
+        for side in ["l", "r"]:
+            for region in ["ft", "bk"]:
                 self.create_ik_fk_blend(side, region)
                 self.set_driven_key(side, region)
                 self.create_foot_space_switch(side, region)
                 self.create_leg_orient(side, region)
                 self.create_scapula_aim_ikHnd(side, region)
                 self.create_scapula_orient(side, region)
-       
-
+                self.create_toe_ctrl(side, region)
+        
+        # === 6. Cleanup and mirror ===
         print("✅ Rig construction completed successfully!")
         AutoRigHelpers.mirror_all_right_shapes()
         AutoRigHelpers.lock_and_hide_ctrls()

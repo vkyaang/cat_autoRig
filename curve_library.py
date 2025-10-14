@@ -527,6 +527,55 @@ class RigCurveLibrary(object):
 		cmds.makeIdentity(crv, apply=True, t=1, r=1, s=1, n=0)
 		
 		return crv
+	
+	@classmethod
+	def create_curved_double_arrow(cls, name="crv_curvedDoubleArrow", scale=1.0):
+		"""
+		Create a curved double-arrow NURBS curve (smooth, degree=3, closed loop).
+		Based on stored CV positions from design reference.
+		"""
+		
+		points = [
+			(0.05, 0.323, 0.167), (-0.05, 0.323, 0.167), (-0.169, 0.318, 0.167),
+			(-0.228, 0.309, 0.167), (-0.344, 0.289, 0.167), (-0.51, 0.239, 0.167),
+			(-0.616, 0.194, 0.167), (-0.667, 0.168, 0.167), (-0.667, 0.168, 0.225),
+			(-0.667, 0.168, 0.279), (-0.667, 0.168, 0.334), (-0.778, 0.115, 0.222),
+			(-0.89, 0.063, 0.111), (-1.001, 0.01, 0.0), (-0.89, 0.063, -0.111),
+			(-0.778, 0.115, -0.222), (-0.667, 0.168, -0.334), (-0.667, 0.168, -0.278),
+			(-0.667, 0.168, -0.223), (-0.667, 0.168, -0.167), (-0.616, 0.194, -0.167),
+			(-0.51, 0.239, -0.167), (-0.344, 0.289, -0.167), (-0.228, 0.309, -0.167),
+			(-0.169, 0.316, -0.167), (-0.052, 0.322, -0.167), (0.052, 0.327, -0.167),
+			(0.169, 0.316, -0.167), (0.228, 0.309, -0.167), (0.344, 0.289, -0.167),
+			(0.51, 0.239, -0.167), (0.616, 0.194, -0.167), (0.667, 0.168, -0.167),
+			(0.667, 0.168, -0.225), (0.667, 0.168, -0.279), (0.667, 0.168, -0.334),
+			(0.778, 0.115, -0.222), (0.89, 0.063, -0.111), (1.001, 0.01, 0.0),
+			(0.89, 0.063, 0.111), (0.778, 0.115, 0.222), (0.667, 0.168, 0.334),
+			(0.667, 0.168, 0.278), (0.667, 0.168, 0.223), (0.667, 0.168, 0.167),
+			(0.616, 0.194, 0.167), (0.51, 0.239, 0.167), (0.344, 0.289, 0.167),
+			(0.228, 0.311, 0.167), (0.169, 0.316, 0.167), (0.05, 0.323, 0.167)
+		]
+		
+		# Scale if needed
+		points = [(x * scale, y * scale, z * scale) for x, y, z in points]
+		
+		# Degree 3 = smooth curved line
+		degree = 3
+		
+		# Auto-generate uniform knot vector for cubic curve
+		knots = list(range(len(points) + degree - 1))
+		
+		# Create the curve
+		crv = cmds.curve(d=degree, p=points, k=knots, n=name)
+		
+		# Close the curve into a full loop
+		cmds.closeCurve(crv, ch=False, ps=True, rpo=True)
+		
+		# Freeze transforms for clean zero state
+		cmds.makeIdentity(crv, apply=True, t=1, r=1, s=1, n=0)
+		
+		return crv
+
+
 
 
 
