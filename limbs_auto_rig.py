@@ -1291,6 +1291,8 @@ class LimbsAutoRig(object):
         all_toe_ctrls = {}
         buffer_groups = {}
         
+        all_driven_grps = []
+        
         # === Iterate through each toe ===
         for toe_name, chain in zip(toe_names, toe_joints):
             prev_ctrl = None
@@ -1354,42 +1356,93 @@ class LimbsAutoRig(object):
                 prev_buffer = buffer
                 
                 # set driven key
-                self.toe_set_driven_key(side, region, toes_all_ctrl, driven_grp)
+                
+                # self.toe_set_driven_key(side, region, toes_all_ctrl, driven_grp)
 
                 toe_ctrls.append(ctrl)
                 buffers.append(buffer)
+                all_driven_grps.append(driven_grp)
 
             # Store per toe
             all_toe_ctrls[toe_name] = toe_ctrls
             buffer_groups[toe_name] = buffers
-
-
+            for toe_names, driven in all_toe_ctrls.items():
+                for buf in driven:
+                    zero, offset, driven, connect = AutoRigHelpers.get_parent_grp(buf)
+                    all_driven_grps.append(driven)
+            
+            self.toe_set_driven_key(side, region, toes_all_ctrl, all_driven_grps)
+            
             # Store references for later access
             self._store(f"{side}_{region}_toe_ctrls_dict", all_toe_ctrls)
             self._store(f"{side}_{region}_toe_ctrls_grp", ctrl_grp)
             self._store(f"{side}_{region}_toes_all_ctrl_grp", toes_all_ctrl)
-            
     
-    def toe_set_driven_key(self, side, region, toe_all_ctrl, driven_group):
-        """Set Driven key for foot bank and heel roll"""
+    def toe_set_driven_key(self, side, region, toe_all_ctrl, driven_groups):
+        """
+        Set Driven Keys for:
+        - 'spread': rotateY on base joints
+        - 'fist': rotateZ on mid & tip joints (excluding thumb)
+        """
+        # === Spread rotation values per toe ===
+        spread_info = {
+            "index": -35,
+            "middle": -15,
+            "ring": 15,
+            "pinky": 35
+        }
         
-        # spread key
-        if 'base' in driven_group:
-            # spread key 0
-            cmds.setDrivenKeyframe(f'{driven_group}.ry', cd=f'{toe_all_ctrl}.spread')
-            # spread key 1
-            if "pinky" in driven_group:
-                AutoRigHelpers.set_attr(toe_all_ctrl, 'spread', 1)
-                AutoRigHelpers.set_attr(f'{driven_group}', 'rotateY', 35)
-                cmds.setDrivenKeyframe(f'{driven_group}.ry', cd=f'{toe_all_ctrl}.spread')
-            elif "ring" in driven_group:
-                AutoRigHelpers.set_attr(toe_all_ctrl, 'spread', 1)
-                AutoRigHelpers.set_attr(f'{driven_group}', 'rotateY', 15)
-                cmds.setDrivenKeyframe(f'{driven_group}.ry', cd=f'{toe_all_ctrl}.spread')
-            
+        # === Fist angle (same for all non-thumb toes) ===
+        fist_angle = -70
         
+        # =============================
+        # Spread Keys (base only)
+        # =============================
+        AutoRigHelpers.set_attr(toe_all_ctrl, "spread", 0)
+        for grp in driven_groups:
+            if "base" not in grp:
+                continue  # only apply to base
+            AutoRigHelpers.set_attr(grp, "rotateY", 0)
+            cmds.setDrivenKeyframe(f"{grp}.rotateY", cd=f"{toe_all_ctrl}.spread")
         
+        AutoRigHelpers.set_attr(toe_all_ctrl, "spread", 1)
+        for grp in driven_groups:
+            if "base" not in grp:
+                continue
+            for toe_name, angle in spread_info.items():
+                if toe_name in grp:
+                    AutoRigHelpers.set_attr(grp, "rotateY", angle)
+                    cmds.setDrivenKeyframe(f"{grp}.rotateY", cd=f"{toe_all_ctrl}.spread")
+                    break
         
+        # reset
+        AutoRigHelpers.set_attr(toe_all_ctrl, "spread", 0)
+        
+        # =============================
+        # Fist Keys (mid & tip only)
+        # =============================
+        AutoRigHelpers.set_attr(toe_all_ctrl, "fist", 0)
+        for grp in driven_groups:
+            # only mid or tip joints, skip thumb
+            if not any(x in grp for x in ["_mid_", "tip"]):
+                continue
+            if "thumb" in grp:
+                continue
+            AutoRigHelpers.set_attr(grp, "rotateZ", 0)
+            cmds.setDrivenKeyframe(f"{grp}.rotateZ", cd=f"{toe_all_ctrl}.fist")
+        
+        AutoRigHelpers.set_attr(toe_all_ctrl, "fist", 1)
+        for grp in driven_groups:
+            if not any(x in grp for x in ["_mid_", "tip"]):
+                continue
+            if "thumb" in grp:
+                continue
+            AutoRigHelpers.set_attr(grp, "rotateZ", fist_angle)
+            cmds.setDrivenKeyframe(f"{grp}.rotateZ", cd=f"{toe_all_ctrl}.fist")
+        
+        # reset
+        AutoRigHelpers.set_attr(toe_all_ctrl, "fist", 0)
+    
     # ======================
     # Main Rig Constructor
     # ======================
