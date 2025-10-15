@@ -1,5 +1,6 @@
 # main.py
 import sys
+import os
 import importlib
 
 pvr_path = r"D:\maya2023\Maya2023\scripts\cat_autoRig"
@@ -12,6 +13,7 @@ import neck_spine_auto_rig
 importlib.reload(neck_spine_auto_rig)
 import  limbs_auto_rig
 importlib.reload(limbs_auto_rig)
+
 
 # Run it
 # group = auto_rig.InitRigSetUp()
@@ -29,3 +31,14 @@ neck_spine_rig.construct_rig()
 limbs_rig = limbs_auto_rig.LimbsAutoRig(master, neck_spine_rig)
 limbs_rig.construct_rig()
 
+# ---- edit controllers
+import controller_shape
+importlib.reload(controller_shape)
+
+json_path = r"E:\Vicky Term 4\cat_rig\data\controller_shapes.json"
+if os.path.exists(json_path):
+    controller_shape.load_controller_shapes(json_path)
+
+from auto_rig_helpers import AutoRigHelpers
+
+AutoRigHelpers.mirror_all_right_shapes()

@@ -8,7 +8,7 @@ importlib.reload(curve_library)
 importlib.reload(auto_rig_helpers)
 
 from auto_rig_helpers import AutoRigHelpers
-from build_master_hierachy import Master
+# from build_master_hierachy import Master
 crv_lib = curve_library.RigCurveLibrary()
 
 # GLOBAl Variable
@@ -21,13 +21,14 @@ LOC_COG = 'loc_c_cog_0001'
 
 class SpineNeckAutoRig(object):
 	
-	def __init__(self, master: Master):
+	def __init__(self, master):
 		# master variables
 		self.master = master
 		self.move_all_ctrl = master.move_all_off_ctrl
 		self.control_grp = master.control_grp
 		self.joint_grp = master.joint_grp
-		self.rig_nodes_grp = master.rig_nodes_grp
+		self.rig_nodes_local = master.rig_nodes_local
+		self.rig_nodes_world = master.rig_nodes_world
 		
 		# --------------------------------------
 		self.chest_buffer_grp = None
@@ -481,7 +482,7 @@ class SpineNeckAutoRig(object):
 			loc_fix_factor = 'loc_c_scaleFixFactor_0001'
 		else:
 			loc_fix_factor = cmds.spaceLocator(name='loc_c_scaleFixFactor_0001')[0]
-			cmds.parent(loc_fix_factor, RIG_NODES_LOCAL_GRP)
+			cmds.parent(loc_fix_factor, AutoRigHelpers.get('rig_nodes_local'))
 			cmds.scaleConstraint(move_all_ctrl, loc_fix_factor)
 		
 		# create nodes
@@ -833,7 +834,7 @@ class SpineNeckAutoRig(object):
 				belly_ctrls.append(belly_off_ctrl)
 				
 		# create target group
-		belly_data_grp = cmds.createNode('transform', n='grp_c_bellyData_0001', parent=RIG_NODES_LOCAL_GRP)
+		belly_data_grp = cmds.createNode('transform', n='grp_c_bellyData_0001', parent=self.rig_nodes_world)
 		belly01_target_grp = cmds.createNode('transform', n='grp_c_belly01_target_0001', parent=belly_data_grp)
 		belly01_up_grp = cmds.createNode('transform', n='grp_c_belly01_up_0001', parent=belly01_target_grp)
 		belly02_target_grp = cmds.createNode('transform', n='grp_c_belly02_target_0001', parent=belly_data_grp)
@@ -922,7 +923,7 @@ class SpineNeckAutoRig(object):
 		return belly_joints
 	
 	def setup_head_orient(self):
-		head_orient_grp = cmds.createNode('transform', n='grp_c_head_orient_0001', parent=RIG_NODES_LOCAL_GRP)
+		head_orient_grp = cmds.createNode('transform', n='grp_c_head_orient_0001', parent=self.rig_nodes_world)
 		offset_orient_grp = cmds.createNode('transform', n='offset_c_head_orient_0001', parent=head_orient_grp)
 		loc_head_orient_local = cmds.spaceLocator(n='loc_c_head_local_0001')[0]
 		loc_head_orient_world = cmds.spaceLocator(n='loc_c_head_world_0001')[0]
@@ -994,7 +995,7 @@ class SpineNeckAutoRig(object):
 		prev_ctrl = None
 		
 		for i, jnt in enumerate(tail_joints[:-1]):
-			small_ctrl = crv_lib.circle(3, f'ctrl_c_tail_{i+1:04d}')
+			small_ctrl = crv_lib.circle(1, f'ctrl_c_tail_{i+1:04d}')
 			cmds.matchTransform(small_ctrl, jnt)
 			cmds.parentConstraint(small_ctrl, jnt, mo=False)
 			AutoRigHelpers.create_control_hierarchy(small_ctrl, 3)
@@ -1054,8 +1055,6 @@ class SpineNeckAutoRig(object):
 			end_idx = min(idx + step, n)
 			segment = driven_grp[start_idx:end_idx]
 			ctrl_segment = small_ctrl[start_idx:end_idx]
-			print(i)
-			print(ctrl_segment)
 			
 			# connect rotation
 			for seg_driven in segment:
@@ -1102,9 +1101,8 @@ class SpineNeckAutoRig(object):
 		# create tail
 		self.create_tail()
 		
+		
 		AutoRigHelpers.lock_and_hide_ctrls()
-#
-# if __name__ == "__main__":
-# 	spine_neck_rig = SpineNeckAutoRig()
-# 	spine_neck_rig.construct_rig()
+		
+		# AutoRigHelpers.set_ctrl_color(cmds.ls("ctrl_c_*", type="transform"), side="c")
 

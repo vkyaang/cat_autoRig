@@ -1,4 +1,7 @@
+import json
 import maya.cmds as cmds
+import os
+
 
 class RigCurveLibrary(object):
 	
@@ -641,12 +644,8 @@ class RigCurveLibrary(object):
 		
 		crv = cmds.curve(name=name, degree=1, point=pts)
 		return crv
-
-
-
-
-
-
+	
+	
 
 
 

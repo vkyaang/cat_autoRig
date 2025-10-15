@@ -257,16 +257,27 @@ class AutoRigHelpers(object):
 					cmds.xform(cvs_r[i], ws=True, t=pos)
 				
 				mirrored_count += 1
-		
+	
 	@classmethod
 	def lock_and_hide_ctrls(cls, ctrl=None):
+		"""
+		Lock and hide attributes on controls, skipping any 'move_all' controls.
+		If ctrl is provided → lock that one (unless it’s move_all).
+		If ctrl is None → lock all except move_all controls.
+		"""
+		
+		def _is_move_all(name):
+			return "move_all" in name.lower() or "moveall" in name.lower()
+		
 		if ctrl:
-			AutoRigHelpers.lock_hide_attr(ctrl, ['sx', 'sy', 'sz', 'v'])
+			if not _is_move_all(ctrl):
+				AutoRigHelpers.lock_hide_attr(ctrl, ['sx', 'sy', 'sz', 'v'])
 		else:
 			ctrls = [c for c in cmds.ls(type="transform") if c.startswith("ctrl")]
 			for c in ctrls:
-				AutoRigHelpers.lock_hide_attr(c, ['sx', 'sy', 'sz', 'v'])
-				
+				if not _is_move_all(c):
+					AutoRigHelpers.lock_hide_attr(c, ['sx', 'sy', 'sz', 'v'])
+	
 	@classmethod
 	def store(cls, name, value):
 		"""Convenience for self variable assignment"""
@@ -282,3 +293,24 @@ class AutoRigHelpers(object):
 			if warn:
 				cmds.warning(f"[Rig] Missing attribute: self.{name}")
 			return default
+	
+	@staticmethod
+	def set_ctrl_color(ctrls, side="c"):
+		"""
+		Set color using index values instead of RGB.
+		side: 'l' (blue=6), 'r' (red=13), 'c' (yellow=17)
+		"""
+		color_index = {
+			"l": 6,  # blue
+			"r": 13,  # red
+			"c": 17  # yellow
+		}.get(side, 22)  # default: light gray (22)
+		
+		for ctrl in ctrls:
+			if not cmds.objExists(ctrl):
+				continue
+			shapes = cmds.listRelatives(ctrl, s=True, ni=True, f=True) or []
+			for shape in shapes:
+				cmds.setAttr(f"{shape}.overrideEnabled", 1)
+				cmds.setAttr(f"{shape}.overrideRGBColors", 0)  # disable RGB mode
+				cmds.setAttr(f"{shape}.overrideColor", color_index)

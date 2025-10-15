@@ -13,7 +13,7 @@ importlib.reload(build_master_hierachy)
 
 from auto_rig_helpers import AutoRigHelpers
 from neck_spine_auto_rig import SpineNeckAutoRig
-from build_master_hierachy import Master
+# from build_master_hierachy import Master
 
 crv_lib = curve_library.RigCurveLibrary()
 
@@ -54,13 +54,14 @@ TOE_TEMP_JOINTS = {
 
 
 class LimbsAutoRig(object):
-    def __init__(self, master: Master, spine_rig: SpineNeckAutoRig):
+    def __init__(self, master, spine_rig: SpineNeckAutoRig):
         # master variables
         self.master = master
         self.move_all_ctrl = master.move_all_off_ctrl
         self.control_grp = master.control_grp
         self.joint_grp = master.joint_grp
-        self.rig_nodes_grp = master.rig_nodes_grp
+        self.rig_nodes_local = master.rig_nodes_local
+        self.rig_nodes_world = master.rig_nodes_world
         
         self.spine_rig = spine_rig
         self.cog_ctrl = spine_rig.cog_off_ctrl
@@ -1013,7 +1014,7 @@ class LimbsAutoRig(object):
         upperleg_fk_offset = ctrls['fk_offset_grps'][0]
         upperleg_fk_ctrl = ctrls['fk_controls'][0]
         
-        leg_data_grp = self._ensure_group(f'grp_legData_0001', parent=RIG_NODES_LOCAL_GRP)
+        leg_data_grp = self._ensure_group(f'grp_legData_0001', parent=self.rig_nodes_world)
         orient_root_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_leg_orient_0001')
         orient_offset_grp = cmds.createNode('transform', n=f'offset_{side}_{region}_leg_orient_0001')
         cmds.parent(orient_offset_grp, orient_root_grp)
@@ -1205,7 +1206,7 @@ class LimbsAutoRig(object):
         cog_jnt = self.cog_jnt
         chest_buffer_grp = self.chest_buffer_grp
         
-        root = self._ensure_group("grp_scapula_orient_0001", RIG_NODES_LOCAL_GRP)
+        root = self._ensure_group("grp_scapula_orient_0001", self.rig_nodes_world)
         
         # create body aim grp
         body_aim_root_grp = self._ensure_group('grp_c_bodyAim_0001', parent=cog_jnt)
@@ -1298,6 +1299,7 @@ class LimbsAutoRig(object):
         AutoRigHelpers.create_control_hierarchy(toes_all_ctrl, 2)
         _, _, toes_zero, toes_offset = AutoRigHelpers.get_parent_grp(toes_all_ctrl)
         cmds.parent(toes_zero, ctrl_grp)
+        cmds.parentConstraint(toe_jnt, toes_offset, mo=True)
         AutoRigHelpers.lock_hide_attr(toes_all_ctrl, ['tx','ty','tz'])
         
         all_toe_ctrls = {}
@@ -1359,7 +1361,10 @@ class LimbsAutoRig(object):
                             AutoRigHelpers.connect_attr(toes_all_ctrl, attr, connect_grp, attr)
 
                 if driver and cmds.objExists(driver):
-                    cmds.parentConstraint(driver, buffer, mo=True)
+                    if "thumb" not in buffer:
+                        cmds.parentConstraint(driver, buffer, mo=True)
+                    elif "thumb" in toe_name.lower() and "metacarple" in part.lower():
+                        cmds.parentConstraint(driver, buffer, mo=True)
 
                 # Constraint to drive joint
                 cmds.parentConstraint(ctrl, jnt, mo=False)
@@ -1493,5 +1498,9 @@ class LimbsAutoRig(object):
         
         # === 6. Cleanup and mirror ===
         print("✅ Rig construction completed successfully!")
-        AutoRigHelpers.mirror_all_right_shapes()
+        # AutoRigHelpers.mirror_all_right_shapes()
         AutoRigHelpers.lock_and_hide_ctrls()
+        
+        # AutoRigHelpers.set_ctrl_color(cmds.ls("ctrl_l_*", type="transform"), side="l")
+        # AutoRigHelpers.set_ctrl_color(cmds.ls("ctrl_r_*", type="transform"), side="r")
+
