@@ -68,6 +68,7 @@ class LimbsAutoRig(object):
         self.pelvis_ik_ctrl = spine_rig.pelvis_ik_ctrl
         self.spine_joints = spine_rig.spine_joints
         self.pelvis_ctrl = spine_rig.pelvis_ctrl
+        self.pelvis_jnt = spine_rig.pelvis_jnt
         self.chest_buffer_grp = spine_rig.chest_buffer_grp
         self.cog_jnt = spine_rig.cog_jnt
     
@@ -1178,8 +1179,7 @@ class LimbsAutoRig(object):
         
         # create ikHnd
         if region == 'ft':
-            aim_ikHnd = \
-                cmds.ikHandle(sj=scapula_aim_root, ee=scapula_aim_end, sol='ikSCsolver',
+            aim_ikHnd = cmds.ikHandle(sj=scapula_aim_root, ee=scapula_aim_end, sol='ikSCsolver',
                               n=f'ikHnd_{side}_scapulaAim_0001')[
                     0]
             aim_ikHnd_grp = cmds.createNode('transform', n=f'grp_{side}_scapulaAim_ikHnd_0001')
@@ -1459,6 +1459,123 @@ class LimbsAutoRig(object):
         
         # reset
         AutoRigHelpers.set_attr(toe_all_ctrl, "fist", 0)
+        
+    # ---- twist joint setup ----
+    def create_twist_joints(self, side, region, twist_jnt_num=5):
+        """ create twist joints"""
+        
+        ctrls = self._get_leg_data(side, region)
+        joint_chain = ctrls['legJnts']
+        upperleg_jnt = joint_chain[0]
+        knee_jnt = joint_chain[1]
+        ankle_jnt = joint_chain[2]
+        scapula_jnt = self.get(f'{side}_scapula_joints')[0]
+        pelvis_jnt = self.pelvis_jnt
+        
+        # ----- create knee twist driver joints------
+        knee_twist_driver = cmds.createNode('joint', n=f'jnt_{side}_{region}_kneeTwistDriver_0001', p=knee_jnt)
+        knee_twist_driver_tip = cmds.createNode('joint', n=f'jnt_{side}_{region}_kneeTwistDriverTip_0001')
+        cmds.matchTransform(knee_twist_driver, knee_jnt)
+        cmds.matchTransform(knee_twist_driver_tip, ankle_jnt, pos=True, rot=False)
+        cmds.parent(knee_twist_driver_tip, knee_twist_driver)
+        AutoRigHelpers.set_attr(knee_twist_driver, 'visibility', False)
+        
+        # clear end joint rotation
+        for rot in ['jointOrientX','jointOrientY','jointOrientZ']:
+            AutoRigHelpers.set_attr(knee_twist_driver_tip, rot, 0)
+        
+        # create single chain ik
+        knee_ikHnd = cmds.ikHandle(sj=knee_twist_driver, ee=knee_twist_driver_tip, sol='ikSCsolver',
+                              n=f'ikHnd_{side}_{region}_kneeTwistDriver_0001')[0]
+        cmds.parent(knee_ikHnd, ankle_jnt)
+        AutoRigHelpers.set_attr(knee_ikHnd, 'visibility', False)
+        
+        # create knee twist joints
+        knee_twist_joints = []
+        for i in range(twist_jnt_num):
+            jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_kneeTwist_{i+1:04d}', p=knee_jnt)
+            if i == twist_jnt_num - 1:
+                cmds.matchTransform(jnt, ankle_jnt, pos=True, rot=False)
+            knee_twist_joints.append(jnt)
+            
+        # point constraint twist joint to get transformation
+        start_jnt = knee_twist_joints[0]
+        end_jnt = knee_twist_joints[-1]
+        mid_jnt = knee_twist_joints[len(knee_twist_joints) // 2]
+        knee_cons1 = cmds.pointConstraint(start_jnt, end_jnt, mid_jnt, mo=False)[0]
+        knee_cons2 = cmds.pointConstraint(start_jnt, mid_jnt, knee_twist_joints[1], mo=False)[0]
+        knee_cons3 = cmds.pointConstraint(mid_jnt, end_jnt, knee_twist_joints[-2], mo=False)[0]
+        cmds.delete(knee_cons1, knee_cons2, knee_cons3)
+        
+        # connect rotation to knee twist joint
+        knee_mult_node = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_kneeTwistDriver_0001')
+        for axis, value in zip(['X','Y','Z'], [0.25, 0.5, 0.75]):
+            AutoRigHelpers.connect_attr(knee_twist_driver, 'rotateX', knee_mult_node, f'input1{axis}')
+            AutoRigHelpers.set_attr(knee_mult_node, f'input2{axis}', value)
+        # connect twist 5
+        AutoRigHelpers.connect_attr(knee_twist_driver, 'rotateX', end_jnt, 'rotateX')
+        # connect twist 2
+        AutoRigHelpers.connect_attr(knee_mult_node, 'outputX', knee_twist_joints[1], 'rotateX')
+        # connect twist 3
+        AutoRigHelpers.connect_attr(knee_mult_node, 'outputY', knee_twist_joints[2], 'rotateX')
+        # connect twist 4
+        AutoRigHelpers.connect_attr(knee_mult_node, 'outputZ', knee_twist_joints[-2], 'rotateX')
+        
+        
+        # ------ create upperleg twist driver joints ----------
+        
+        upperleg_twist_driver = cmds.createNode('joint', n=f'jnt_{side}_{region}_upperlegTwistDriver_0001', p=upperleg_jnt)
+        upperleg_twist_driver_tip = cmds.createNode('joint', n=f'jnt_{side}_{region}_upperlegTwistDriverTip_0001')
+        cmds.matchTransform(upperleg_twist_driver, upperleg_jnt)
+        cmds.matchTransform(upperleg_twist_driver_tip, knee_jnt, pos=True, rot=False)
+        cmds.parent(upperleg_twist_driver_tip, upperleg_twist_driver)
+        AutoRigHelpers.set_attr(upperleg_twist_driver, 'visibility', False)
+        
+        # clear end joint rotation
+        for rot in ['jointOrientX', 'jointOrientY', 'jointOrientZ']:
+            AutoRigHelpers.set_attr(upperleg_twist_driver_tip, rot, 0)
+        
+        # create single chain ik
+        upperleg_ikHnd = cmds.ikHandle(sj=upperleg_twist_driver, ee=upperleg_twist_driver_tip, sol='ikSCsolver',
+                                   n=f'ikHnd_{side}_{region}_upperlegTwistDriver_0001')[0]
+        
+        AutoRigHelpers.set_attr(upperleg_ikHnd, 'visibility', False)
+        if region == 'ft':
+            cmds.parent(upperleg_ikHnd, scapula_jnt)
+        else:
+            cmds.parent(upperleg_ikHnd, pelvis_jnt)
+            
+        # create knee twist joints
+        upperleg_twist_joints = []
+        for i in range(twist_jnt_num):
+            jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_upperlegTwist_{i + 1:04d}', p=upperleg_jnt)
+            if i == twist_jnt_num - 1:
+                cmds.matchTransform(jnt, knee_jnt, pos=True, rot=False)
+            upperleg_twist_joints.append(jnt)
+        
+        # point constraint twist joint to get transformation
+        upperleg_start_jnt = upperleg_twist_joints[0]
+        upperleg_end_jnt = upperleg_twist_joints[-1]
+        upperleg_mid_jnt = upperleg_twist_joints[len(upperleg_twist_joints) // 2]
+        
+        upperleg_cons1 = cmds.pointConstraint(upperleg_start_jnt, upperleg_end_jnt, upperleg_mid_jnt, mo=False)[0]
+        upperleg_cons2 = cmds.pointConstraint(upperleg_start_jnt, upperleg_mid_jnt, upperleg_twist_joints[1], mo=False)[0]
+        upperleg_cons3 = cmds.pointConstraint(upperleg_mid_jnt, upperleg_end_jnt, upperleg_twist_joints[-2], mo=False)[0]
+        cmds.delete(upperleg_cons1, upperleg_cons2, upperleg_cons3)
+        
+        # connect rotation to upperleg twist joint
+        upperleg_mult_node = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_upperlegTwistDriver_0001')
+        for axis, value in zip(['X', 'Y', 'Z'], [0.75, 0.5, 0.25]):
+            AutoRigHelpers.connect_attr(upperleg_twist_driver, 'rotateX', upperleg_mult_node, f'input1{axis}')
+            AutoRigHelpers.set_attr(upperleg_mult_node, f'input2{axis}', value)
+        # connect twist 5
+        AutoRigHelpers.connect_attr(upperleg_twist_driver, 'rotateX', upperleg_start_jnt, 'rotateX')
+        # connect twist 2
+        AutoRigHelpers.connect_attr(upperleg_mult_node, 'outputX', upperleg_twist_joints[1], 'rotateX')
+        # connect twist 3
+        AutoRigHelpers.connect_attr(upperleg_mult_node, 'outputY', upperleg_twist_joints[2], 'rotateX')
+        # connect twist 4
+        AutoRigHelpers.connect_attr(upperleg_mult_node, 'outputZ', upperleg_twist_joints[-2], 'rotateX')
     
     # ======================
     # Main Rig Constructor
@@ -1495,12 +1612,10 @@ class LimbsAutoRig(object):
                 self.create_scapula_aim_ikHnd(side, region)
                 self.create_scapula_orient(side, region)
                 self.create_toe_ctrl(side, region)
+                self.create_twist_joints(side, region)
         
         # === 6. Cleanup and mirror ===
-        print("✅ Rig construction completed successfully!")
-        # AutoRigHelpers.mirror_all_right_shapes()
+        print("Rig construction completed successfully")
         AutoRigHelpers.lock_and_hide_ctrls()
         
-        # AutoRigHelpers.set_ctrl_color(cmds.ls("ctrl_l_*", type="transform"), side="l")
-        # AutoRigHelpers.set_ctrl_color(cmds.ls("ctrl_r_*", type="transform"), side="r")
 

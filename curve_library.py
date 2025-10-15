@@ -7,7 +7,9 @@ class RigCurveLibrary(object):
 	
 	@classmethod
 	def circle(cls, radius=1.0, name="circle_crv"):
-		return cmds.circle(center=(0, 0, 0), normal=(0, 1, 0), radius=radius, name=name)[0]
+		circle = cmds.circle(center=(0, 0, 0), normal=(0, 1, 0), radius=radius, name=name)[0]
+		cmds.delete(circle, ch=True)
+		return  circle
 	
 	@classmethod
 	def two_way_arrow(cls, name="two_way_arrow_crv"):

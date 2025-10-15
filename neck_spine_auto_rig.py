@@ -23,6 +23,7 @@ class SpineNeckAutoRig(object):
 	
 	def __init__(self, master):
 		# master variables
+		self.pelvis_jnt = None
 		self.master = master
 		self.move_all_ctrl = master.move_all_off_ctrl
 		self.control_grp = master.control_grp
@@ -968,6 +969,7 @@ class SpineNeckAutoRig(object):
 		cmds.parentConstraint(pelvis_ctrl, pelvis_jnt, mo=False)
 		
 		self.pelvis_ctrl = pelvis_ctrl
+		self.pelvis_jnt = pelvis_jnt
 		
 	def create_tail(self):
 		tail_joints = self.joint_on_curve(self.tail_curve, 'tail', 8)
@@ -1056,10 +1058,17 @@ class SpineNeckAutoRig(object):
 			segment = driven_grp[start_idx:end_idx]
 			ctrl_segment = small_ctrl[start_idx:end_idx]
 			
+			# create multiply divide
+			div_node = cmds.createNode('multiplyDivide', n=f'div_c_tailDrv_{i:04d}')
+			AutoRigHelpers.set_attr(div_node, 'operation', 2)
+			for attr in ['outputX','outputY','outputZ']:
+				AutoRigHelpers.set_attr(div_node, attr, joints_per_ctrl)
+			AutoRigHelpers.connect_attr(ctrl, 'rotate', div_node, 'input1')
+			
 			# connect rotation
 			for seg_driven in segment:
-				for rot in ['rotateX','rotateY','rotateZ']:
-					AutoRigHelpers.connect_attr(ctrl, rot, seg_driven, rot)
+				for rot, attr in zip(['rotateX','rotateY','rotateZ'], ['X','Y','Z']):
+					AutoRigHelpers.connect_attr(div_node, f'output{attr}', seg_driven, rot)
 			
 			if i > 1:  # skip sub ctrl 001
 				# parent under small_ctrl at the start joint of its own range

@@ -1,5 +1,4 @@
 import maya.cmds as cmds
-import maya.mel as mel
 import json
 import os
 
@@ -52,7 +51,7 @@ def save_controller_shapes(controls, json_path):
     with open(json_path, "w") as f:
         json.dump(data, f, indent=4)
 
-    print(f"✅ Controller shapes and colors saved to: {json_path}")
+    print(f"Controller shapes and colors saved to: {json_path}")
 
 def load_controller_shapes(json_path):
     """
@@ -103,15 +102,8 @@ def load_controller_shapes(json_path):
                 cmds.setAttr(f"{shape}.overrideShading", 0)
                 cmds.setAttr(f"{shape}.overrideShading", 1)
 
-    # # --- Force viewport refresh ---
-    # try:
-    #     mel.eval("ogs -reset")
-    #     mel.eval("displayColor -reset -active")
-    # except:
-    #     pass
-    # cmds.refresh(force=True)
 
-    print(f"✅ Controller shapes (multi-shape) + colors reloaded from: {json_path}")
+    print(f"Controller shapes (multi-shape) + colors reloaded from: {json_path}")
 
 
 

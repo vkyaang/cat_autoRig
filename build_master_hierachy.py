@@ -34,6 +34,7 @@ class Master(object):
 		rig_nodes_local = cmds.createNode('transform', n='rigNodesLocal', p=master_grp)
 		
 		AutoRigHelpers.set_attr(rig_nodes_local, 'visibility', False)
+		AutoRigHelpers.set_attr(rig_nodes_world, 'visibility', False)
 		
 		self.rig_nodes_world = rig_nodes_world
 		self.rig_nodes_local = rig_nodes_local
@@ -50,8 +51,8 @@ class Master(object):
 		AutoRigHelpers.create_control_hierarchy(move_all_ctrl, 1)
 		AutoRigHelpers.create_control_hierarchy(move_all_off_ctrl, 1)
 		
-		AutoRigHelpers.lock_hide_attr(move_all_ctrl, ['v'])
-		AutoRigHelpers.lock_hide_attr(move_all_off_ctrl, ['v'])
+		AutoRigHelpers.lock_hide_attr(move_all_ctrl, ['visibility'])
+		AutoRigHelpers.lock_hide_attr(move_all_off_ctrl, ['visibility'])
 		
 		move_all_zero = AutoRigHelpers.get_parent_grp(move_all_ctrl)[3]
 		move_all_off_zero = AutoRigHelpers.get_parent_grp(move_all_off_ctrl)[3]
@@ -62,10 +63,6 @@ class Master(object):
 		cmds.scaleConstraint(move_all_off_ctrl, AutoRigHelpers.get('joint_grp'))
 		cmds.scaleConstraint(move_all_off_ctrl, AutoRigHelpers.get('rig_nodes_world'))
 		
-		# # connect scale
-		# AutoRigHelpers.add_attr(move_all_ctrl, 'scale_rig', 'float', 1, 0)
-		# for grp in [AutoRigHelpers.get()]
-		# AutoRigHelpers.connect_attr(move_all_ctrl, 'scale_rig', c)
 		self.move_all_off_ctrl = move_all_off_ctrl
 		
 	def construct_master(self):
