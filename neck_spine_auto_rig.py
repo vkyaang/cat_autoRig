@@ -2,11 +2,13 @@ import importlib
 import maya.cmds as cmds
 import curve_library
 import auto_rig_helpers
+import  build_master_hierachy
 
 importlib.reload(curve_library)
 importlib.reload(auto_rig_helpers)
 
 from auto_rig_helpers import AutoRigHelpers
+from build_master_hierachy import Master
 crv_lib = curve_library.RigCurveLibrary()
 
 # GLOBAl Variable
@@ -19,7 +21,15 @@ LOC_COG = 'loc_c_cog_0001'
 
 class SpineNeckAutoRig(object):
 	
-	def __init__(self):
+	def __init__(self, master: Master):
+		# master variables
+		self.master = master
+		self.move_all_ctrl = master.move_all_off_ctrl
+		self.control_grp = master.control_grp
+		self.joint_grp = master.joint_grp
+		self.rig_nodes_grp = master.rig_nodes_grp
+		
+		# --------------------------------------
 		self.chest_buffer_grp = None
 		self.pelvis_ctrl = None
 		self.cog_jnt = None
@@ -460,7 +470,7 @@ class SpineNeckAutoRig(object):
 		self.chest_buffer_grp = chest_buffer_grp
 	
 	@classmethod
-	def setup_stretch(cls, name, detail, str_chain, crv, last_jnt=True):
+	def setup_stretch(cls, name, detail, str_chain, crv, move_all_ctrl, last_jnt=True):
 		crv_info_name = f'crvInfo_c_{name}_0001'
 		div_norm_name = 'div_c_scaleFixFactor_0001'
 		mdl_norm_name = 'mdl_c_scaleFixFactor_0001'
@@ -472,7 +482,7 @@ class SpineNeckAutoRig(object):
 		else:
 			loc_fix_factor = cmds.spaceLocator(name='loc_c_scaleFixFactor_0001')[0]
 			cmds.parent(loc_fix_factor, RIG_NODES_LOCAL_GRP)
-			cmds.scaleConstraint(MOVE_ALL_CTRL, loc_fix_factor)
+			cmds.scaleConstraint(move_all_ctrl, loc_fix_factor)
 		
 		# create nodes
 		crv_info = cmds.createNode('curveInfo', name=crv_info_name)
@@ -753,7 +763,7 @@ class SpineNeckAutoRig(object):
 		cog_zero = AutoRigHelpers.get_parent_grp(cog_ctrl)[3]
 		cog_off_zero = AutoRigHelpers.get_parent_grp(cog_off_ctrl)[3]
 		cmds.parent(cog_off_zero, cog_ctrl)
-		cmds.parent(cog_zero, MOVE_ALL_CTRL)
+		cmds.parent(cog_zero, self.move_all_ctrl)
 		
 
 		self.cog_off_ctrl = cog_off_ctrl
@@ -923,12 +933,12 @@ class SpineNeckAutoRig(object):
 		cmds.parentConstraint(self.chest_ik_ctrl, offset_orient_grp, mo=False)
 		
 		translate_cons = cmds.parentConstraint(self.cog_jnt, loc_head_orient_world, mo=True)[0]
-		rotate_cons = cmds.orientConstraint(self.chest_ik_ctrl, MOVE_ALL_CTRL, loc_head_orient_local, mo=True)[0]
+		rotate_cons = cmds.orientConstraint(self.chest_ik_ctrl, self.move_all_ctrl, loc_head_orient_local, mo=True)[0]
 		
 		rmp_local_world_rot = cmds.createNode('reverse', n='rvs_c_head_localWorldRot_0001')
 		rmp_local_world_trans = cmds.createNode('reverse', n='rvs_c_head_localWorldTrans_0001')
 		
-		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_rotate', rotate_cons, f'{MOVE_ALL_CTRL}W1')
+		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_rotate', rotate_cons, f'{self.move_all_ctrl}W1')
 		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_rotate', rmp_local_world_rot, 'inputX')
 		AutoRigHelpers.connect_attr(rmp_local_world_rot, 'outputX', rotate_cons, f'{self.chest_ik_ctrl}W0')
 		AutoRigHelpers.set_attr(rotate_cons, 'interpType', 2)
@@ -1068,8 +1078,8 @@ class SpineNeckAutoRig(object):
 		# spine
 		self.create_spine_joints()
 		self.create_spine_setup()
-		self.setup_stretch('spine', 'strFw', self.str_fw_joints, self.spine_fw_curve)
-		self.setup_stretch('spine', 'strBw', self.str_bw_joints, self.spine_bw_curve)
+		self.setup_stretch('spine', 'strFw', self.str_fw_joints, self.spine_fw_curve, self.move_all_ctrl)
+		self.setup_stretch('spine', 'strBw', self.str_bw_joints, self.spine_bw_curve, self.move_all_ctrl)
 		self.blend_fw_bw(self.spine_switch_ctrl, 'spine', self.str_fw_joints, self.str_bw_joints, self.str_joints)
 		self.blend_fw_bw(self.spine_switch_ctrl, 'spine', self.non_str_fw_joints, self.non_str_bw_joints, self.non_str_joints)
 		self.blend_str_nonStr(self.spine_switch_ctrl, 'spine', self.str_joints, self.non_str_joints, self.spine_joints)
@@ -1077,7 +1087,7 @@ class SpineNeckAutoRig(object):
 		# neck
 		self.create_neck_joints()
 		self.create_neck_setup()
-		self.setup_stretch('neck', 'str', self.neck_str_joints, self.neck_curve, False)
+		self.setup_stretch('neck', 'str', self.neck_str_joints, self.neck_curve, self.move_all_ctrl, False)
 		self.blend_str_nonStr(self.neck_switch_ctrl, 'neck', self.neck_str_joints, self.neck_non_str_joints, self.neck_joints)
 		
 		# create belly

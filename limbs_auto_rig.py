@@ -4,12 +4,16 @@ import importlib
 import auto_rig_helpers
 import neck_spine_auto_rig
 import curve_library
+import  build_master_hierachy
 
 importlib.reload(auto_rig_helpers)
 importlib.reload(curve_library)
 importlib.reload(neck_spine_auto_rig)
+importlib.reload(build_master_hierachy)
+
 from auto_rig_helpers import AutoRigHelpers
 from neck_spine_auto_rig import SpineNeckAutoRig
+from build_master_hierachy import Master
 
 crv_lib = curve_library.RigCurveLibrary()
 
@@ -50,7 +54,14 @@ TOE_TEMP_JOINTS = {
 
 
 class LimbsAutoRig(object):
-    def __init__(self, spine_rig: SpineNeckAutoRig):
+    def __init__(self, master: Master, spine_rig: SpineNeckAutoRig):
+        # master variables
+        self.master = master
+        self.move_all_ctrl = master.move_all_off_ctrl
+        self.control_grp = master.control_grp
+        self.joint_grp = master.joint_grp
+        self.rig_nodes_grp = master.rig_nodes_grp
+        
         self.spine_rig = spine_rig
         self.cog_ctrl = spine_rig.cog_off_ctrl
         self.pelvis_ik_ctrl = spine_rig.pelvis_ik_ctrl
@@ -868,7 +879,7 @@ class LimbsAutoRig(object):
         scapula_jnt = self.get(f'{side}_scapula_joints')[0]
         
         # === Create space root groups ===
-        world_root_grp = self._ensure_group(f'grp_SpaceLocs_world_0001', parent=MOVE_ALL_CTRL)
+        world_root_grp = self._ensure_group(f'grp_SpaceLocs_world_0001', parent=self.move_all_ctrl)
         cog_root_grp = self._ensure_group(f'grp_SpaceLocs_cog_0001', parent=cog_ctrl)
         AutoRigHelpers.set_attr(world_root_grp, 'visibility', False)
         AutoRigHelpers.set_attr(cog_root_grp, 'visibility', False)
@@ -877,7 +888,7 @@ class LimbsAutoRig(object):
         cog_foot_root_grp = self._ensure_group(f'grp_footSpaceLocs_cog_0001', parent=cog_root_grp)
         
         foot_datas = {
-            "World": {"ctrl": MOVE_ALL_CTRL, "root": world_foot_root_grp, "index": 0},
+            "World": {"ctrl": self.move_all_ctrl, "root": world_foot_root_grp, "index": 0},
             "Cog": {"ctrl": cog_ctrl, "root": cog_foot_root_grp, "index": 1},
             "Upperleg": {"ctrl": upperleg_ctrl, "root": upperleg_ctrl, "index": 2},
         }
@@ -953,7 +964,7 @@ class LimbsAutoRig(object):
         
         # create knee pole vector space
         pv_datas = {
-            "World": {"ctrl": MOVE_ALL_CTRL, "root": world_knee_root_grp, "index": 0},
+            "World": {"ctrl": self.move_all_ctrl, "root": world_knee_root_grp, "index": 0},
             "Cog": {"ctrl": cog_ctrl, "root": cog_knee_root_grp, "index": 1},
             "Foot": {"ctrl": pv_aim_root_jnt, "root": pv_aim_root_jnt, "index": 2},
         }
@@ -1017,7 +1028,7 @@ class LimbsAutoRig(object):
                 loc = cmds.spaceLocator(n=f'loc_{side}_{region}_leg_orient{info}_0001')[0]
                 cmds.parent(loc, orient_offset_grp)
                 if info == 'World':
-                    cmds.orientConstraint(MOVE_ALL_CTRL, loc, mo=True)
+                    cmds.orientConstraint(self.move_all_ctrl, loc, mo=True)
                 locators.append(loc)
             
             cmds.matchTransform(orient_root_grp, upperleg_ik_ctrl, pos=True, rot=False)
@@ -1041,14 +1052,14 @@ class LimbsAutoRig(object):
                 loc = cmds.spaceLocator(n=f'loc_{side}_{region}_leg_orient{info}_0001')[0]
                 cmds.parent(loc, orient_offset_grp)
                 if info == 'World':
-                    cmds.orientConstraint(MOVE_ALL_CTRL, loc, mo=True)
+                    cmds.orientConstraint(self.move_all_ctrl, loc, mo=True)
                 locators.append(loc)
-            
+
             cmds.matchTransform(orient_root_grp, upperleg_ik_ctrl, pos=True, rot=False)
             # constraint orient group
             cmds.parentConstraint(scapula_jnt, orient_offset_grp, mo=True)
             # constraint upperleg ik ctrl
-            cmds.parentConstraint(locators[1], upperleg_ik_offset, mo=False)
+            cmds.parentConstraint(locators[1], upperleg_ik_offset, mo=True)
             # parent constraint fk upperleg offset
             fk_cons = cmds.parentConstraint(locators, upperleg_fk_offset, mo=True)[0]
             AutoRigHelpers.set_attr(fk_cons, 'interpType', 2)

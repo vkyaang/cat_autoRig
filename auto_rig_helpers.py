@@ -266,3 +266,19 @@ class AutoRigHelpers(object):
 			ctrls = [c for c in cmds.ls(type="transform") if c.startswith("ctrl")]
 			for c in ctrls:
 				AutoRigHelpers.lock_hide_attr(c, ['sx', 'sy', 'sz', 'v'])
+				
+	@classmethod
+	def store(cls, name, value):
+		"""Convenience for self variable assignment"""
+		setattr(cls, name, value)
+		return value
+	
+	@classmethod
+	def get(cls, name, default=None, warn=True):
+		"""Safely retrieve a stored self variable by name."""
+		if hasattr(cls, name):
+			return getattr(cls, name)
+		else:
+			if warn:
+				cmds.warning(f"[Rig] Missing attribute: self.{name}")
+			return default
