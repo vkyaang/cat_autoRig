@@ -1568,7 +1568,7 @@ class LimbsAutoRig(object):
         for axis, value in zip(['X', 'Y', 'Z'], [0.75, 0.5, 0.25]):
             AutoRigHelpers.connect_attr(upperleg_twist_driver, 'rotateX', upperleg_mult_node, f'input1{axis}')
             AutoRigHelpers.set_attr(upperleg_mult_node, f'input2{axis}', value)
-        # connect twist 5
+        # connect twist 1
         AutoRigHelpers.connect_attr(upperleg_twist_driver, 'rotateX', upperleg_start_jnt, 'rotateX')
         # connect twist 2
         AutoRigHelpers.connect_attr(upperleg_mult_node, 'outputX', upperleg_twist_joints[1], 'rotateX')
