@@ -229,7 +229,7 @@ class LimbsAutoRig(object):
 
 
     def create_toe_joints(self, region):
-        """Create and store pivot joints (heelPivot, footOutPivot, toeRvs) for both sides."""
+        
         toe_joints = TOE_TEMP_JOINTS.get(region, [])
         
         # Left and right pivot groups under region root
@@ -275,9 +275,6 @@ class LimbsAutoRig(object):
     def create_pivot_joints(self, region):
         """Create and store pivot joints (heelPivot, footOutPivot, toeRvs) for both sides."""
         pivots = PIVOT_TEMP_JOINTS.get(region, [])
-        
-        piv_root = self._ensure_group("grp_legPivots_0001", JOINTS_GRP)
-        
         
         for src in pivots:
             
@@ -354,7 +351,7 @@ class LimbsAutoRig(object):
         AutoRigHelpers.create_control_hierarchy(switch_ctrl, 2)
         _, _, switch_zero, switch_offset = AutoRigHelpers.get_parent_grp(switch_ctrl)
         cmds.parent(switch_zero, ctrl_grp)
-        cmds.parentConstraint(ankle_ik_jnt, switch_offset, mo=True)
+        cmds.pointConstraint(ankle_ik_jnt, switch_offset, mo=True)
         # add and hide attr
         AutoRigHelpers.lock_hide_attr(switch_ctrl, ['tx', 'ty', 'tz', 'rx', 'ry', 'rz'])
         AutoRigHelpers.add_attr(switch_ctrl, 'ik_fk_switch', 'float', 0, 0, 1)
@@ -607,6 +604,7 @@ class LimbsAutoRig(object):
                                       wuo=ik_chain[-1],
                                       mo=False)[0]
         cmds.delete(aim_cons)
+        cmds.delete(loc)
         
         # create ik hierachy
         heel_ctrl = crv_lib.create_diamond_sphere(f'ctrl_{side}_{region}_heelPivotIk_0001')
@@ -662,7 +660,7 @@ class LimbsAutoRig(object):
         
         # add leg roll ctrl attr
         AutoRigHelpers.lock_hide_attr(leg_roll_ctrl, ['tx', 'ty', 'tz'])
-        AutoRigHelpers.add_attr(leg_roll_ctrl, 'roll_active', 'float', 0, 0, 1)
+        AutoRigHelpers.add_attr(leg_roll_ctrl, 'roll_active', 'float', 1, 0, 1)
         
         # create ankle roll
         ankle_roll_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_ankleRoll_0001')
@@ -758,6 +756,7 @@ class LimbsAutoRig(object):
         
         # create locators
         data_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_strData_0001', p=jnt_grp)
+        AutoRigHelpers.set_attr(data_grp, 'visibility', False)
         start_loc = cmds.spaceLocator(n=f'loc_{side}_{region}_leg_startPos_0001')[0]
         end_loc = cmds.spaceLocator(n=f'loc_{side}_{region}_leg_endPos_0001')[0]
         cmds.parentConstraint(upperleg_ctrl, start_loc, mo=False)
@@ -1505,7 +1504,8 @@ class LimbsAutoRig(object):
         knee_cons1 = cmds.pointConstraint(start_jnt, end_jnt, mid_jnt, mo=False)[0]
         knee_cons2 = cmds.pointConstraint(start_jnt, mid_jnt, knee_twist_joints[1], mo=False)[0]
         knee_cons3 = cmds.pointConstraint(mid_jnt, end_jnt, knee_twist_joints[-2], mo=False)[0]
-        cmds.delete(knee_cons1, knee_cons2, knee_cons3)
+        knee_cons5 = cmds.pointConstraint(ankle_jnt, end_jnt, mo=True)[0]
+        # cmds.delete(knee_cons1, knee_cons2, knee_cons3)
         
         # connect rotation to knee twist joint
         knee_mult_node = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_kneeTwistDriver_0001')
@@ -1561,7 +1561,8 @@ class LimbsAutoRig(object):
         upperleg_cons1 = cmds.pointConstraint(upperleg_start_jnt, upperleg_end_jnt, upperleg_mid_jnt, mo=False)[0]
         upperleg_cons2 = cmds.pointConstraint(upperleg_start_jnt, upperleg_mid_jnt, upperleg_twist_joints[1], mo=False)[0]
         upperleg_cons3 = cmds.pointConstraint(upperleg_mid_jnt, upperleg_end_jnt, upperleg_twist_joints[-2], mo=False)[0]
-        cmds.delete(upperleg_cons1, upperleg_cons2, upperleg_cons3)
+        upperleg_cons5 = cmds.pointConstraint(knee_jnt, upperleg_end_jnt, mo=True)[0]
+        # cmds.delete(upperleg_cons1, upperleg_cons2, upperleg_cons3)
         
         # connect rotation to upperleg twist joint
         upperleg_mult_node = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_upperlegTwistDriver_0001')

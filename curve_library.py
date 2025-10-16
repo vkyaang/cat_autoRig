@@ -647,9 +647,99 @@ class RigCurveLibrary(object):
 		crv = cmds.curve(name=name, degree=1, point=pts)
 		return crv
 	
+	@classmethod
+	def create_ball_curve(cls, name="ctrl_ball_crv", scale=1.0):
+		"""
+		Build a 3-axis 'ball' control from periodic cubic curves,
+		using the provided CVs *and* knot vectors (so the shape matches exactly).
+		"""
+		# [isPeriodic, degree, points, knots]
+		ball_1 = [True, 3,
+				  [(0.78, 0.0, -0.78), (0.0, 0.0, -1.103), (-0.78, 0.0, -0.78),
+				   (-1.103, 0.0, 0.0), (-0.78, 0.0, 0.78), (0.0, 0.0, 1.103),
+				   (0.78, 0.0, 0.78), (1.103, 0.0, 0.0), (0.78, 0.0, -0.78),
+				   (0.0, 0.0, -1.103), (-0.78, 0.0, -0.78)],
+				  [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]]
+		
+		ball_2 = [True, 3,
+				  [(0.78, 0.78, 0.0), (0.0, 1.103, 0.0), (-0.78, 0.78, 0.0),
+				   (-1.103, 0.0, 0.0), (-0.78, -0.78, 0.0), (0.0, -1.103, 0.0),
+				   (0.78, -0.78, 0.0), (1.103, 0.0, 0.0), (0.78, 0.78, 0.0),
+				   (0.0, 1.103, 0.0), (-0.78, 0.78, 0.0)],
+				  [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]]
+		
+		ball_3 = [True, 3,
+				  [(0.0, -0.78, -0.78), (0.0, 0.0, -1.103), (0.0, 0.78, -0.78),
+				   (0.0, 1.103, 0.0), (0.0, 0.78, 0.78), (0.0, 0.0, 1.103),
+				   (0.0, -0.78, 0.78), (0.0, -1.103, 0.0), (0.0, -0.78, -0.78),
+				   (0.0, 0.0, -1.103), (0.0, 0.78, -0.78)],
+				  [-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]]
+		
+		def _make_curve(name, spec):
+			is_periodic, deg, pts, knots = spec
+			pts = [(x * scale, y * scale, z * scale) for (x, y, z) in pts]
+			# Build with knots and periodic flag so the shape matches
+			crv = cmds.curve(d=deg, p=pts, k=knots, per=bool(is_periodic), n=name)
+			return crv
+		
+		# build three axes
+		base = _make_curve(name, ball_1)
+		c_y = _make_curve(f"{name}_Y", ball_2)
+		c_z = _make_curve(f"{name}_Z", ball_3)
+		
+		# merge shapes under the base transform
+		for crv in (c_y, c_z):
+			for sh in cmds.listRelatives(crv, s=True, f=True) or []:
+				cmds.parent(sh, base, s=True, r=True)
+			cmds.delete(crv)
+		
+		# clean transforms
+		cmds.makeIdentity(base, a=True, t=True, r=True, s=True)
+		return base
 	
-
-
+	@classmethod
+	def create_eye_aim_curve(cls, name="ctrl_eyeAim_crv", scale=1.0, mode="poly"):
+		"""
+		Build an eye-aim control
+		
+		"""
+		eyes_1 = [
+			True, 3,
+			[
+				(0.78, 0.0, -0.632),
+				(0.0, 0.0, -0.213),
+				(-0.78, 0.0, -0.632),
+				(-1.103, 0.0, 0.0),
+				(-0.78, 0.0, 0.632),
+				(0.0, 0.0, 0.213),
+				(0.78, 0.0, 0.632),
+				(1.103, 0.0, 0.0),
+				(0.78, 0.0, -0.632),
+				(0.0, 0.0, -0.213),
+				(-0.78, 0.0, -0.632),
+			],
+			[-2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0]
+		]
+		
+		is_periodic, degree, points, knots = eyes_1
+		
+		# Apply scale
+		scaled_points = [(x * scale, y * scale, z * scale) for (x, y, z) in points]
+		
+		# Create the actual NURBS curve with full fidelity
+		crv = cmds.curve(
+			d=degree,
+			p=scaled_points,
+			k=knots,
+			per=bool(is_periodic),
+			n=name
+		)
+		
+		# Freeze transforms
+		cmds.makeIdentity(crv, apply=True, t=True, r=True, s=True)
+		cmds.select(clear=True)
+		
+		return crv
 
 
 

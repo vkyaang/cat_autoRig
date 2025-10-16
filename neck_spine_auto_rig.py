@@ -18,11 +18,15 @@ CONTROLS_GRP = 'controls'
 JOINTS_GRP = 'joints'
 LOC_NECK_END = 'loc_c_neck_end_0001'
 LOC_COG = 'loc_c_cog_0001'
+LOC_EYE = 'temp_l_loc_eye_0001'
 
 class SpineNeckAutoRig(object):
 	
 	def __init__(self, master):
 		# master variables
+		self.eye_ctrl_grp = None
+		self.eye_controls = None
+		self.eye_joints = None
 		self.pelvis_jnt = None
 		self.master = master
 		self.move_all_ctrl = master.move_all_off_ctrl
@@ -44,7 +48,7 @@ class SpineNeckAutoRig(object):
 		self.neck_mid_jnt = None
 		self.neck_ik_jnt = None
 		self.neck_lower_jnt = None
-		self.neck_ik_ctrl = None
+		self.head_ctrl = None
 		self.neck_data_grp = None
 		self.neck_non_str_joints = None
 		self.neck_str_joints = None
@@ -404,7 +408,7 @@ class SpineNeckAutoRig(object):
 		
 		# set switch attr
 		AutoRigHelpers.add_attr(spine_switch_ctrl, 'stretch', 'float', 0, 0, 1)
-		AutoRigHelpers.add_attr(spine_switch_ctrl, 'stretch_anchor', 'float', 0, 0, 1)
+		AutoRigHelpers.add_attr(spine_switch_ctrl, 'stretch_anchor', 'float', 0.5, 0, 1)
 		
 		# parent driver joints
 		cmds.parent(self.pelvis_ik_jnt, pelvis_ik_ctrl)
@@ -654,7 +658,7 @@ class SpineNeckAutoRig(object):
 
 		# Assign world up objects
 		AutoRigHelpers.connect_attr(self.chest_ik_ctrl, 'worldMatrix[0]', neck_str_ikHnd, 'dWorldUpMatrix', True)
-		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'worldMatrix[0]', neck_str_ikHnd, 'dWorldUpMatrixEnd', True)
+		AutoRigHelpers.connect_attr(self.head_ctrl, 'worldMatrix[0]', neck_str_ikHnd, 'dWorldUpMatrixEnd', True)
 	
 	def create_neck_controllers(self):
 		# create groups
@@ -662,23 +666,23 @@ class SpineNeckAutoRig(object):
 		cmds.parentConstraint(self.chest_ik_ctrl, neck_ctrl_grp, mo=True)
 		
 		# create controls
-		neck_ik_ctrl = crv_lib.create_cube_curve("ctrl_c_neck_ik_0001")
+		head_ctrl = crv_lib.create_cube_curve("ctrl_c_head_ik_0001")
 		neck_mid_ctrl = crv_lib.create_diamond("ctrl_c_neckMid_ik_0001")
 		neck_switch_ctrl = crv_lib.create_lollipop_ctrl("ctrl_c_neckSwitch_0001")
 		
 		# match transform
-		cmds.matchTransform(neck_ik_ctrl, self.neck_ik_jnt)
+		cmds.matchTransform(head_ctrl, self.neck_ik_jnt)
 		cmds.matchTransform(neck_mid_ctrl, self.neck_mid_jnt)
 		cmds.matchTransform(neck_switch_ctrl, self.chest_ik_ctrl)
 		
 		AutoRigHelpers.create_control_hierarchy(self.neck_lower_jnt, 2)
 		_, _, neck_lower_jnt_zero, neck_lower_jnt_offset = AutoRigHelpers.get_parent_grp(self.neck_lower_jnt)
-		AutoRigHelpers.create_control_hierarchy(neck_ik_ctrl)
+		AutoRigHelpers.create_control_hierarchy(head_ctrl)
 		AutoRigHelpers.create_control_hierarchy(neck_mid_ctrl)
 		AutoRigHelpers.create_control_hierarchy(neck_switch_ctrl, 1)
 		
 		# lock and hide attr
-		AutoRigHelpers.lock_hide_attr(neck_ik_ctrl, ['sx', 'sy', 'sz', 'v'])
+		AutoRigHelpers.lock_hide_attr(head_ctrl, ['sx', 'sy', 'sz', 'v'])
 		AutoRigHelpers.lock_hide_attr(neck_mid_ctrl, ['sx', 'sy', 'sz', 'v'])
 		AutoRigHelpers.lock_hide_attr(neck_switch_ctrl, ['tx', 'ty', 'tz', 'rx', 'ry', 'rz', 'sx', 'sy', 'sz', 'v'])
 		
@@ -687,12 +691,12 @@ class SpineNeckAutoRig(object):
 		
 		# # parent driver joints
 		# cmds.parent(self.neck_lower_jnt, neck_lower_jnt_offset)
-		cmds.parent(self.neck_ik_jnt, neck_ik_ctrl)
+		cmds.parent(self.neck_ik_jnt, head_ctrl)
 		cmds.parent(self.neck_mid_jnt, neck_mid_ctrl)
 		
 		# Get zero and offset
 		neck_mid_zero, neck_mid_offset, *_ = AutoRigHelpers.get_parent_grp(neck_mid_ctrl)
-		neck_ik_zero, *_ = AutoRigHelpers.get_parent_grp(neck_ik_ctrl)
+		neck_ik_zero, *_ = AutoRigHelpers.get_parent_grp(head_ctrl)
 		neck_switch_zero = AutoRigHelpers.get_parent_grp(neck_switch_ctrl)
 		
 		# parent zero group
@@ -724,7 +728,7 @@ class SpineNeckAutoRig(object):
 		AutoRigHelpers.lock_hide_attr(neck_tangent_ctrl, ['tx', 'ty', 'tz', 'sx', 'sy', 'sz', 'v'])
 		
 		cmds.matchTransform(neck_lower_tangent_ctrl, self.chest_ik_ctrl)
-		cmds.matchTransform(neck_tangent_ctrl, neck_ik_ctrl)
+		cmds.matchTransform(neck_tangent_ctrl, head_ctrl)
 		AutoRigHelpers.create_control_hierarchy(neck_lower_tangent_ctrl, 2)
 		AutoRigHelpers.create_control_hierarchy(neck_tangent_ctrl, 2)
 		neck_lower_tangent_zero = AutoRigHelpers.get_parent_grp(neck_lower_tangent_ctrl)[2]
@@ -733,7 +737,7 @@ class SpineNeckAutoRig(object):
 		cmds.parent(neck_tangent_zero, neck_ctrl_grp)
 		
 		cmds.parentConstraint(self.chest_ik_ctrl, AutoRigHelpers.get_parent_grp(neck_lower_tangent_ctrl)[3], mo=False)
-		cmds.parentConstraint(neck_ik_ctrl, AutoRigHelpers.get_parent_grp(neck_tangent_ctrl)[3], mo=False)
+		cmds.parentConstraint(head_ctrl, AutoRigHelpers.get_parent_grp(neck_tangent_ctrl)[3], mo=False)
 		
 		AutoRigHelpers.connect_attr(neck_lower_tangent_ctrl, "rotate", self.neck_lower_jnt, 'rotate')
 		AutoRigHelpers.connect_attr(neck_lower_tangent_ctrl, "tangent_length", self.neck_lower_jnt, 'sz')
@@ -741,11 +745,11 @@ class SpineNeckAutoRig(object):
 		AutoRigHelpers.connect_attr(neck_tangent_ctrl, "tangent_length", self.neck_ik_jnt, 'sz')
 		
 		# add attr to chest ctrl
-		AutoRigHelpers.add_attr(neck_ik_ctrl, 'local_world_rotate', 'float', 0, 0, 1)
-		AutoRigHelpers.add_attr(neck_ik_ctrl, 'local_world_translate', 'float', 0, 0, 1)
+		AutoRigHelpers.add_attr(head_ctrl, 'local_world_rotate', 'float', 0, 0, 1)
+		AutoRigHelpers.add_attr(head_ctrl, 'local_world_translate', 'float', 0, 0, 1)
 		
 		self.neck_lower_tangent_ctrl = neck_lower_tangent_ctrl
-		self.neck_ik_ctrl = neck_ik_ctrl
+		self.head_ctrl = head_ctrl
 		self.neck_tangent_ctrl = neck_tangent_ctrl
 		self.neck_switch_ctrl = neck_switch_ctrl
 	
@@ -931,7 +935,7 @@ class SpineNeckAutoRig(object):
 		cmds.parent(loc_head_orient_local, offset_orient_grp)
 		cmds.parent(loc_head_orient_world, offset_orient_grp)
 		
-		cmds.matchTransform(head_orient_grp, self.neck_ik_ctrl)
+		cmds.matchTransform(head_orient_grp, self.head_ctrl)
 		cmds.parentConstraint(self.chest_ik_ctrl, offset_orient_grp, mo=False)
 		
 		translate_cons = cmds.parentConstraint(self.cog_jnt, loc_head_orient_world, mo=True)[0]
@@ -940,17 +944,17 @@ class SpineNeckAutoRig(object):
 		rmp_local_world_rot = cmds.createNode('reverse', n='rvs_c_head_localWorldRot_0001')
 		rmp_local_world_trans = cmds.createNode('reverse', n='rvs_c_head_localWorldTrans_0001')
 		
-		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_rotate', rotate_cons, f'{self.move_all_ctrl}W1')
-		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_rotate', rmp_local_world_rot, 'inputX')
+		AutoRigHelpers.connect_attr(self.head_ctrl, 'local_world_rotate', rotate_cons, f'{self.move_all_ctrl}W1')
+		AutoRigHelpers.connect_attr(self.head_ctrl, 'local_world_rotate', rmp_local_world_rot, 'inputX')
 		AutoRigHelpers.connect_attr(rmp_local_world_rot, 'outputX', rotate_cons, f'{self.chest_ik_ctrl}W0')
 		AutoRigHelpers.set_attr(rotate_cons, 'interpType', 2)
 		
-		offset_neck_ik = AutoRigHelpers.get_parent_grp(self.neck_ik_ctrl)[1]
+		offset_neck_ik = AutoRigHelpers.get_parent_grp(self.head_ctrl)[1]
 		# constraint neck ctrl
 		neck_cons = cmds.parentConstraint(loc_head_orient_local, loc_head_orient_world, offset_neck_ik, mo=True)[0]
 		AutoRigHelpers.set_attr(neck_cons, 'interpType', 2)
-		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_translate', rmp_local_world_trans, 'inputX')
-		AutoRigHelpers.connect_attr(self.neck_ik_ctrl, 'local_world_translate', neck_cons, f'{loc_head_orient_world}W1')
+		AutoRigHelpers.connect_attr(self.head_ctrl, 'local_world_translate', rmp_local_world_trans, 'inputX')
+		AutoRigHelpers.connect_attr(self.head_ctrl, 'local_world_translate', neck_cons, f'{loc_head_orient_world}W1')
 		AutoRigHelpers.connect_attr(rmp_local_world_trans, 'outputX', neck_cons, f'{loc_head_orient_local}W0')
 		
 	def create_pelvis(self):
@@ -1080,6 +1084,109 @@ class SpineNeckAutoRig(object):
 			AutoRigHelpers.lock_hide_attr(ctrl, ['tx', 'ty', 'tz'])
 		return sub_ctrls
 	
+	# --------- eye -------------
+	
+	def create_eye_setup(self):
+		
+		# create groups
+		eye_jnt_grp = cmds.createNode('transform', n='grp_eyeJnts_0001', p=self.joint_grp)
+		eye_ctrl_grp = cmds.createNode('transform', n='grp_eyeCtrls_0001')
+		cmds.parent(eye_ctrl_grp, self.cog_off_ctrl)
+		
+		# ---------- create eye Aim control
+		main_aim_ctrl = crv_lib.create_eye_aim_curve('ctrl_c_eyeAim_0001')
+		AutoRigHelpers.create_control_hierarchy(main_aim_ctrl, 2)
+		_, _, main_aim_zero, main_aim_offset = AutoRigHelpers.get_parent_grp(main_aim_ctrl)
+		cmds.parent(main_aim_zero, eye_ctrl_grp)
+		cmds.matchTransform(main_aim_zero, LOC_EYE, positionY=True, positionZ=True)
+		ctrl_tx = AutoRigHelpers.get_attr(main_aim_zero, 'translateZ')
+		AutoRigHelpers.set_attr(main_aim_zero, 'translateZ', ctrl_tx + 15)
+		
+		# add attr
+		AutoRigHelpers.add_attr(main_aim_ctrl, 'follow', 'enum', enum_names=['World', 'Head'])
+		# add eye space
+		eye_space_cons = cmds.parentConstraint(self.move_all_ctrl, self.neck_ik_jnt, main_aim_offset, mo=True)[0]
+		AutoRigHelpers.set_attr(eye_space_cons, 'interpType', 2)
+		# create condition node
+		for i, space in enumerate(['World', 'Head']):
+			space_cond = cmds.createNode('condition', n=f'cond_c_eyeAim_follow{space}_0001')
+			
+			AutoRigHelpers.connect_attr(main_aim_ctrl, 'follow', space_cond, 'firstTerm')
+			AutoRigHelpers.set_attr(space_cond, 'secondTerm', i)
+			AutoRigHelpers.set_attr(space_cond, 'colorIfTrueR', 1)
+			AutoRigHelpers.set_attr(space_cond, 'colorIfFalseR', 0)
+			if space == 'World':
+				AutoRigHelpers.connect_attr(space_cond, 'outColorR', eye_space_cons, f'{self.move_all_ctrl}W0')
+			else:
+				AutoRigHelpers.connect_attr(space_cond, 'outColorR', eye_space_cons, f'{self.neck_ik_jnt}W1')
+		
+		# create eye joints and controls
+		eye_joints = []
+		eye_controls = []
+		up_groups = []
+		eye_offset_groups = []
+		
+		for side in ['l', 'r']:
+			# create joints and ctrls
+			jnt = cmds.createNode('joint', n=f'jnt_{side}_eyeBall_0001', p=eye_jnt_grp)
+			ctrl = crv_lib.create_ball_curve(f'ctrl_{side}_eyeBall_0001')
+			
+			cmds.matchTransform(jnt, LOC_EYE)
+			if side == 'r':
+				r_jnt_tx = - AutoRigHelpers.get_attr(jnt, 'translateX')
+				AutoRigHelpers.set_attr(jnt, 'translateX', r_jnt_tx)
+				
+			# create groups
+			ctrl_grp = cmds.createNode('transform', n=f'grp_{side}_eyeCtrls_0001', p=eye_ctrl_grp)
+			cmds.matchTransform(ctrl_grp, jnt)
+			up_grp = cmds.createNode('transform', n=f'grp_{side}_eyeUp_0001', p=ctrl_grp)
+			AutoRigHelpers.set_attr(up_grp, 'translateY', 5)
+			
+			cmds.matchTransform(ctrl, jnt)
+			AutoRigHelpers.create_control_hierarchy(ctrl, 2)
+			_, _, eye_zero, eye_offset = AutoRigHelpers.get_parent_grp(ctrl)
+			cmds.parent(eye_zero, ctrl_grp)
+			
+			# parent constraint
+			cmds.parentConstraint(ctrl, jnt, mo=False)
+			
+			# eye aim setup
+			loc = cmds.spaceLocator(n=f'loc_{side}_eyeAim_0001')[0]
+			cmds.matchTransform(loc, jnt)
+			loc_tx = AutoRigHelpers.get_attr(loc, 'translateZ')
+			AutoRigHelpers.set_attr(loc, 'translateZ', loc_tx + 15)
+			
+			# create individual aim controller
+			aim_ctrl = crv_lib.circle(3, f'ctrl_{side}_eyeAim_0001')
+			AutoRigHelpers.create_control_hierarchy(aim_ctrl, 2)
+			_, _, aim_zero, aim_offset = AutoRigHelpers.get_parent_grp(aim_ctrl)
+			cmds.parent(aim_zero, main_aim_ctrl)
+			cmds.matchTransform(aim_zero, loc)
+			
+			# do aim constraint
+			aim_cons = cmds.aimConstraint(aim_ctrl,
+										  eye_offset,
+										  aimVector=(0,0,1),
+										  upVector=(0,1,0),
+										  worldUpType='object',
+										  worldUpObject=up_grp,
+										  mo=False)
+
+			eye_joints.append(jnt)
+			eye_controls.append(ctrl)
+			up_groups.append(up_grp)
+			eye_offset_groups.append(eye_offset)
+			
+			cmds.delete(loc)
+
+
+		self.eye_joints = eye_joints
+		self.eye_controls = eye_controls
+		self.eye_ctrl_grp = eye_ctrl_grp
+		
+
+	
+	
 	def construct_rig(self):
 		self.create_cog()
 		
@@ -1110,6 +1217,8 @@ class SpineNeckAutoRig(object):
 		# create tail
 		self.create_tail()
 		
+		# create eye
+		self.create_eye_setup()
 		
 		AutoRigHelpers.lock_and_hide_ctrls()
 		

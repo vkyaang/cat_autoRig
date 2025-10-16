@@ -53,57 +53,66 @@ def save_controller_shapes(controls, json_path):
 
     print(f"Controller shapes and colors saved to: {json_path}")
 
+import maya.cmds as cmds
+import json
+import os
+
 def load_controller_shapes(json_path):
     """
-    Load controller transforms, per-shape CVs, and color index from JSON.
-    Fully supports multiple shapes per control.
+    Load controller shapes and colors
+   
     """
     if not os.path.exists(json_path):
-        cmds.warning(f"⚠️ File not found: {json_path}")
+        cmds.warning(f"⚠️ Shape file not found: {json_path}")
         return
 
     with open(json_path, "r") as f:
         data = json.load(f)
 
+    missing_ctrls = []
+    color_fail = []
+
     for ctrl, ctrl_info in data.items():
         if not cmds.objExists(ctrl):
-            cmds.warning(f"⚠️ Skipping missing controller: {ctrl}")
+            missing_ctrls.append(ctrl)
             continue
 
-        # --- Apply transforms ---
-        cmds.xform(ctrl, ws=True, t=ctrl_info.get("translate", [0, 0, 0]))
-        cmds.xform(ctrl, ws=True, ro=ctrl_info.get("rotate", [0, 0, 0]))
-        cmds.xform(ctrl, r=True, s=ctrl_info.get("scale", [1, 1, 1]))
+        # === Restore shapes ===
+        saved_shapes = ctrl_info.get("shapes", {})
+        current_shapes = cmds.listRelatives(ctrl, s=True, ni=True, f=True) or []
 
-        # --- Apply each shape's stored data ---
-        for shape, shape_info in ctrl_info.get("shapes", {}).items():
-            if not cmds.objExists(shape):
+        for i, (saved_shape, shape_info) in enumerate(saved_shapes.items()):
+            if not current_shapes:
                 continue
 
-            # Apply CVs
-            cvs = cmds.ls(f"{shape}.cv[*]", fl=True)
-            for i, cv in enumerate(cvs):
-                if i < len(shape_info["cv_positions"]):
-                    cmds.xform(cv, ws=True, t=shape_info["cv_positions"][i])
+            # Try to match shapes 1:1, otherwise fallback to first
+            shape = current_shapes[i] if i < len(current_shapes) else current_shapes[-1]
 
-            # Apply color index
+            # Apply CV positions
+            cvs = cmds.ls(f"{shape}.cv[*]", fl=True)
+            cvs_data = shape_info.get("cv_positions", [])
+            for j, cv in enumerate(cvs):
+                if j < len(cvs_data):
+                    cmds.xform(cv, ws=True, t=cvs_data[j])
+
+            # Apply color (index-based)
             color_index = shape_info.get("color_index")
             if color_index is not None:
                 try:
                     cmds.setAttr(f"{shape}.overrideEnabled", 1)
                     cmds.setAttr(f"{shape}.overrideRGBColors", 0)
                     cmds.setAttr(f"{shape}.overrideColor", int(color_index))
-                    if cmds.attributeQuery("useOutlinerColor", node=shape, exists=True):
-                        cmds.setAttr(f"{shape}.useOutlinerColor", 0)
-                except Exception as e:
-                    cmds.warning(f"⚠️ Could not color {shape}: {e}")
+                except Exception:
+                    color_fail.append(shape)
 
-                # Force shading update
-                cmds.setAttr(f"{shape}.overrideShading", 0)
-                cmds.setAttr(f"{shape}.overrideShading", 1)
+    if missing_ctrls:
+        print(f"Skipped missing controllers: {missing_ctrls}")
+    if color_fail:
+        print(f"Color failed to apply on: {color_fail}")
+
+    print(f"Controller shapes loaded successfully from: {json_path}")
 
 
-    print(f"Controller shapes (multi-shape) + colors reloaded from: {json_path}")
 
 
 

@@ -36,8 +36,11 @@ class Master(object):
 		AutoRigHelpers.set_attr(rig_nodes_local, 'visibility', False)
 		AutoRigHelpers.set_attr(rig_nodes_world, 'visibility', False)
 		
+		self.control_grp = control_grp
+		self.joint_grp = joint_grp
 		self.rig_nodes_world = rig_nodes_world
 		self.rig_nodes_local = rig_nodes_local
+		
 		AutoRigHelpers.store(f'master_grp', master_grp)
 		AutoRigHelpers.store(f'control_grp', control_grp)
 		AutoRigHelpers.store(f'joint_grp', joint_grp)
