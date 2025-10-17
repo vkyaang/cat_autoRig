@@ -397,7 +397,7 @@ class SpineNeckAutoRig(object):
 		for i in range(0, len(self.spine_joints), step):
 			jnt  = self.spine_joints[i]
 			
-			spine_bend_ctrl = crv_lib.create_square_curve(f'ctrl_c_spineBend_{i//step + 1:04d}')
+			spine_bend_ctrl = crv_lib.create_cube_curve(f'ctrl_c_spineBend_{i//step + 1:04d}')
 			AutoRigHelpers.create_control_hierarchy(spine_bend_ctrl, 2)
 			_, _, spine_bend_zero, spine_bend_offset = AutoRigHelpers.get_parent_grp(spine_bend_ctrl)
 			
@@ -431,7 +431,7 @@ class SpineNeckAutoRig(object):
 		AutoRigHelpers.create_control_hierarchy(spine_switch_ctrl, 1)
 		
 		# lock and hide attr
-		AutoRigHelpers.lock_hide_attr(spine_switch_ctrl, ['tx', 'ty', 'tz'])
+		AutoRigHelpers.lock_hide_attr(spine_switch_ctrl, ['tx', 'ty', 'tz', 'rx','ry','rz'])
 		
 		# set switch attr
 		AutoRigHelpers.add_attr(spine_switch_ctrl, 'stretch', 'float', 0, 0, 1)

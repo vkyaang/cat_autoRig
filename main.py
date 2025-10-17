@@ -35,7 +35,7 @@ limbs_rig.construct_rig()
 import controller_shape
 importlib.reload(controller_shape)
 
-json_path = r"E:\Vicky Term 4\cat_rig\data\controller_shapes_002.json"
+json_path = r"E:\Vicky Term 4\cat_rig\data\controller_shapes.json"
 if os.path.exists(json_path):
     controller_shape.load_controller_shapes(json_path)
 

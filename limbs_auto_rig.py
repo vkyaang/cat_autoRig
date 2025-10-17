@@ -432,7 +432,6 @@ class LimbsAutoRig(object):
         toe_jnt = ik_chain[-2]
         toe_end_jnt = ik_chain[-1]
         
-        # foot_ctrl = self.get(f"{side}_{region}_footIk_ctrl")
         ctrls = self._get_leg_data(side, region)
         foot_ctrl = ctrls['foot']
         ball_ctrl = self.get(f"{side}_{region}_ball_ctrl")
@@ -1292,7 +1291,7 @@ class LimbsAutoRig(object):
         
         # create toe overall ctrl
         toes_all_ctrl = crv_lib.create_curved_double_arrow(f'ctrl_{side}_{region}_toesAll_0001')
-        AutoRigHelpers.add_attr(toes_all_ctrl, 'spread', 'float', 0, 0, 1)
+        AutoRigHelpers.add_attr(toes_all_ctrl, 'spread', 'float', 0, -1, 1)
         AutoRigHelpers.add_attr(toes_all_ctrl, 'fist', 'float', 0, 0, 1)
         cmds.matchTransform(toes_all_ctrl, toe_jnt)
         AutoRigHelpers.create_control_hierarchy(toes_all_ctrl, 2)
@@ -1402,10 +1401,10 @@ class LimbsAutoRig(object):
         """
         # === Spread rotation values per toe ===
         spread_info = {
-            "index": -35,
-            "middle": -15,
-            "ring": 15,
-            "pinky": 35
+            "index": [-35, 15],
+            "middle": [-15, 5,],
+            "ring": [15, -5],
+            "pinky": [35, -15]
         }
         
         # === Fist angle (same for all non-thumb toes) ===
@@ -1426,8 +1425,20 @@ class LimbsAutoRig(object):
             if "base" not in grp:
                 continue
             for toe_name, angle in spread_info.items():
+                out_angel = angle[0]
                 if toe_name in grp:
-                    AutoRigHelpers.set_attr(grp, "rotateY", angle)
+                    AutoRigHelpers.set_attr(grp, "rotateY", out_angel)
+                    cmds.setDrivenKeyframe(f"{grp}.rotateY", cd=f"{toe_all_ctrl}.spread")
+                    break
+        
+        AutoRigHelpers.set_attr(toe_all_ctrl, "spread", -1)
+        for grp in driven_groups:
+            if "base" not in grp:
+                continue
+            for toe_name, angle in spread_info.items():
+                in_angel = angle[-1]
+                if toe_name in grp:
+                    AutoRigHelpers.set_attr(grp, "rotateY", in_angel)
                     cmds.setDrivenKeyframe(f"{grp}.rotateY", cd=f"{toe_all_ctrl}.spread")
                     break
         
