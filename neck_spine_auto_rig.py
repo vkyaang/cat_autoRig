@@ -123,8 +123,7 @@ class SpineNeckAutoRig(object):
 		return joint_chain
 	
 	def duplicate_and_rename_chain(self, root_joint, base):
-		"""Duplicate a joint chain from root_joint and rename in strict parent→child order.
-		Example: base='jnt_c_spine_str_fw' → jnt_c_spine_str_fw_0001, _0002, _0003..."""
+		"""Duplicate a joint chain from root_joint and rename in strict parent→child order."""
 		dup_root = cmds.duplicate(root_joint, rc=True, n=f"{base}_0001")[0]
 		
 		ordered = []
@@ -227,7 +226,6 @@ class SpineNeckAutoRig(object):
 	def reverse_joint_chain(self, joint_chain):
 		"""
 		Reverse-parent a joint chain so the last joint becomes the new root.
-		Example:
 			Before: jnt_0001 -> jnt_0002 -> ... -> jnt_0008
 			After:  jnt_0008 -> jnt_0007 -> ... -> jnt_0001
 		"""
@@ -365,9 +363,7 @@ class SpineNeckAutoRig(object):
 	
 	def constraint_non_str_jnts(self, str_chain, non_str_chain):
 		"""
-		Constrain a non-stretch joint chain to follow a stretch joint chain.
-		- Root: parentConstraint (translation + rotation)
-		- Others: orientConstraint (rotation only)
+		Constrain  non-stretch joint chain to follow a stretch joint chain.
 		"""
 		if not str_chain or not non_str_chain:
 			cmds.warning("Empty joint list passed to constraint_non_str_jnt.")
@@ -594,7 +590,7 @@ class SpineNeckAutoRig(object):
 		print(f"Stretch setup complete for str")
 	
 	def create_neck_joints(self):
-		"""Create and organize neck joint chains (forward/backward, stretch/non-stretch)."""
+		"""Create and organize neck joint chains """
 		# 1 Create the base spine joints along the curve
 		
 		self.joint_on_curve(self.neck_curve, 'neck', 5)
