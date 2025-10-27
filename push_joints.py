@@ -50,7 +50,7 @@ def connect_attr(node_a, attr_a, node_b, attr_b, force=False):
 
 # ----------------- setup
 
-def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_val, end_val):
+def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_val, end_val, rmp_pos_val):
 	"""
 	add pose:
 		1) create ref locator
@@ -69,13 +69,12 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 	
 	while cmds.objExists(f"{input_jnt}.{pose_attr_name}"):
 		i += 1
-		pose_attr_name = f'pose_{i:02d}'
+		pose_attr_name = f'pose{i:03d}'
 		loc_name = f'loc_{side}_{region}_{name}_pushPose_{i:04d}'
 		trans_mult_name = f'mult_{side}_{region}_{name}_pushPose_trans_{i:04d}'
 		rot_mult_name = f'mult_{side}_{region}_{name}_pushPose_rot_{i:04d}'
 		scale_mult_name = f'mult_{side}_{region}_{name}_pushPose_scale_{i:04d}'
 		pma_input = f'input3D[{i-1}]'
-		mult_input = f'input{i}'
 	
 	# --- create pose locator ---
 	loc = cmds.spaceLocator(name=loc_name)[0]
@@ -84,10 +83,13 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 	
 	# --- add pose attr to input joint ---
 	cmds.addAttr(input_jnt, ln=pose_attr_name, at='float', min=0, max=1, dv=0, k=True)
+
+	# get pose number
+	pose_num = int(''.join([c for c in pose_attr_name if c.isdigit()]))
 	
 	# --- create or reuse remapValue node ---
-	rmp_name = f'rmp_{side}_{region}_{name}_pushPose_0001'
-	is_new = cmds.objExists(rmp_name)
+	rmp_name = f'rmp_{side}_{region}_{name}_pushPose_{pose_num:04d}'
+	is_new = not cmds.objExists(rmp_name)
 	
 	rmp_node = cmds.createNode('remapValue', n=rmp_name)
 	
@@ -99,14 +101,19 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 	# connect remap out value to pose attr
 	connect_attr(rmp_node, 'outValue', input_jnt, pose_attr_name)
 	
-	# # --- only initialize defaults if node is new ---
-	# if is_new:
-	# 	print(f"New remap node created: {rmp_node}")
-	# 	cmds.setAttr(f"{rmp_node}.value[1].value_FloatValue", 0)
-	# 	cmds.setAttr(f"{rmp_node}.value[2].value_Interp", 1)
-	# 	cmds.setAttr(f"{rmp_node}.value[2].value_FloatValue", 1)
-	# 	cmds.setAttr(f"{rmp_node}.value[2].value_Position", 0.5)
-
+	# --- configure previous remapValue curve (peak at the start of *current* pose) ---
+	if pose_num > 1:
+		prev_rmp = f'rmp_{side}_{region}_{name}_pushPose_{pose_num - 1:04d}'
+		if cmds.objExists(prev_rmp):
+			
+			# shape: 0 → 1 at pos_val → 0
+			cmds.setAttr(f"{prev_rmp}.value[1].value_Position", rmp_pos_val)
+			cmds.setAttr(f"{prev_rmp}.value[1].value_FloatValue", 1)
+			cmds.setAttr(f"{prev_rmp}.value[1].value_Interp", 1)
+			
+			cmds.setAttr(f"{prev_rmp}.value[2].value_Position", 1)
+			cmds.setAttr(f"{prev_rmp}.value[2].value_FloatValue", 0)
+	
 	# connect ref locators value
 	trans_mult = cmds.createNode('multiplyDivide', n=trans_mult_name)
 	rot_mult = cmds.createNode('multiplyDivide', n=rot_mult_name)
@@ -140,7 +147,6 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 			connect_attr(rot_mult, 'output', pma_node, pma_input)
 		
 	# --- connect output mult scale ---
-	pose_num = int(''.join([c for c in pose_attr_name if c.isdigit()]))
 	output_mult_scale_name = f'mult_{side}_{region}_{name}_pushPose_scaleOutput_0001'
 	existing_output_mults = cmds.ls(f'mult_{side}_{region}_{name}_pushPose_scaleOutput_*', type='multiplyDivide') or []
 	total_existing = len(existing_output_mults)
@@ -176,7 +182,7 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 		connect_attr(this_mult, 'output', push_jnt, 'scale', force=True)
 
 
-def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis, offset_axis, offset_val, start_val, end_val):
+def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis, offset_axis, offset_val, start_val, end_val, rmp_pos_val):
 	
 	input_parts = input_joint.split('_')
 	cons_jnt01_parts = cons_joint1.split('_')
@@ -209,13 +215,6 @@ def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis
 			zero = cmds.createNode('transform', name=jnt_zero_name)
 			offset = cmds.createNode('transform', name=jnt_offset_name, p=zero)
 			jnt = cmds.createNode('joint', name=jnt_name, p=offset)
-			
-			# create skeleton push joint
-			skel_jnt = cmds.createNode('joint', name=skel_jnt_name, p=skel_jnt)
-			# connect joint to skeleton joint
-			attrs = ['translate', 'rotate', 'scale']
-			for a in attrs:
-				cmds.connectAttr(f'{jnt}.{a}', f'{skel_jnt}.{a}')
 
 			# match transform to joint
 			cmds.matchTransform(zero, joint)
@@ -224,16 +223,62 @@ def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis
 			# create orient contraint
 			ori_cons = cmds.orientConstraint(cons_joint1, cons_joint2, zero, mo=False)[0]
 			set_attr(ori_cons, 'interpType', 2)
+				
 			# move offset group
 			if side == 'l':
 				set_attr(offset, offset_axis, get_attr(offset, offset_axis) + offset_val*-1)
 			elif side == 'r':
 				set_attr(offset, offset_axis, get_attr(offset, offset_axis) + offset_val)
 			
-			add_pose(name, region, side, offset, joint, jnt, axis, start_val, end_val)
+			# create skeleton push joint
+			skel_zero = cmds.createNode('transform', name=jnt_zero_name.replace('zero', 'zero_skel'), p=skel_jnt)
+			skel_jnt = cmds.createNode('joint', name=skel_jnt_name, p=skel_zero)
+			cmds.matchTransform(skel_zero, jnt)
+			# connect joint to skeleton joint
+			attrs = ['translate', 'rotate', 'scale']
+			for a in attrs:
+				cmds.connectAttr(f'{jnt}.{a}', f'{skel_jnt}.{a}')
+			
+			
+			add_pose(name, region, side, offset, joint, jnt, axis, start_val, end_val, rmp_pos_val)
 
 		else:
-			add_pose(name, region, side, jnt_offset_name, joint, jnt_name, axis, start_val, end_val)
+			add_pose(name, region, side, jnt_offset_name, joint, jnt_name, axis, start_val, end_val, rmp_pos_val)
+
+
+# create_push_joints('jnt_l_bk_kneeTwist_0001',
+# 				   'jnt_l_bk_upperlegTwist_0005',
+# 				   'jnt_l_bk_ankle_0001',
+# 				   'knee',
+# 				   'bk',
+# 				   'rotateZ',
+# 				   'translateY',
+# 				   1.3,
+# 				   0,
+# 				   -60,
+# 				   1)
+# create_push_joints('jnt_l_bk_kneeTwist_0001',
+# 				   'jnt_l_bk_upperlegTwist_0005',
+# 				   'jnt_l_bk_ankle_0001',
+# 				   'knee',
+# 				   'bk',
+# 				   'rotateZ',
+# 				   'translateY',
+# 				   1.3,
+# 				   -30,
+# 				   -90,
+# 				   0.5)
+# create_push_joints('jnt_l_bk_kneeTwist_0001',
+# 				   'jnt_l_bk_upperlegTwist_0005',
+# 				   'jnt_l_bk_ankle_0001',
+# 				   'knee',
+# 				   'bk',
+# 				   'rotateZ',
+# 				   'translateY',
+# 				   1.3,
+# 				   -60,
+# 				   -90,
+# 				   0.5)
 
 
 # ======================================
@@ -241,15 +286,15 @@ def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis
 # ======================================
 
 def push_pose_ui():
-	if cmds.window("pushPoseUI", exists=True):
-		cmds.deleteUI("pushPoseUI")
-	
-	cmds.window("pushPoseUI", title="Push Pose Rig Builder", widthHeight=(420, 500))
+	if cmds.window("pushJointUI", exists=True):
+		cmds.deleteUI("pushJointUI")
+
+	cmds.window("pushJointUI", title="Push Joint Builder", widthHeight=(420, 500))
 	cmds.columnLayout(adj=True, columnAlign="center")
-	
-	cmds.text(label="Push Pose Setup", h=30, bgc=[0.2, 0.2, 0.2])
+
+	cmds.text(label="Push Joint Setup", h=30, bgc=[0.2, 0.2, 0.2])
 	cmds.separator(h=8)
-	
+
 	input_joint_field = cmds.textFieldGrp(label="Input Joint:", cw2=(120, 280))
 	cons_joint1_field = cmds.textFieldGrp(label="Constraint Joint 1:", cw2=(120, 280))
 	cons_joint2_field = cmds.textFieldGrp(label="Constraint Joint 2:", cw2=(120, 280))
@@ -264,9 +309,10 @@ def push_pose_ui():
 	offset_val_field = cmds.floatFieldGrp(label="Offset Value:", value1=1.3, cw2=(120, 100))
 	start_val_field = cmds.floatFieldGrp(label="Start Value:", value1=0.0, cw2=(120, 100))
 	end_val_field = cmds.floatFieldGrp(label="End Value:", value1=90.0, cw2=(120, 100))
-	
+	pos_val_field = cmds.floatFieldGrp(label="Remap Pos Value:", value1=0.5, cw2=(120, 100))
+
 	cmds.separator(h=10)
-	
+
 	def build_push_pose(*_):
 		input_joint = cmds.textFieldGrp(input_joint_field, q=True, text=True)
 		cons_joint1 = cmds.textFieldGrp(cons_joint1_field, q=True, text=True)
@@ -278,13 +324,14 @@ def push_pose_ui():
 		offset_val = cmds.floatFieldGrp(offset_val_field, q=True, value1=True)
 		start_val = cmds.floatFieldGrp(start_val_field, q=True, value1=True)
 		end_val = cmds.floatFieldGrp(end_val_field, q=True, value1=True)
-		
-		create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis, offset_axis, offset_val, start_val, end_val)
-		cmds.inViewMessage(amg=f"✅ Push pose created for <hl>{name}</hl>", pos="midCenter", fade=True)
-	
-	cmds.button(label="Create Push Pose", h=40, bgc=[0.3, 0.5, 0.3], command=build_push_pose)
+		pos_val = cmds.floatFieldGrp(pos_val_field, q=True, value1=True)
+
+		create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis, offset_axis, offset_val, start_val, end_val, pos_val)
+		cmds.inViewMessage(amg=f"✅ Push Joint created for <hl>{name}</hl>", pos="midCenter", fade=True)
+
+	cmds.button(label="Create Push Joint", h=40, bgc=[0.3, 0.5, 0.3], command=build_push_pose)
 	cmds.separator(h=10)
-	cmds.showWindow("pushPoseUI")
+	cmds.showWindow("pushJointUI")
 
 
 # Run it:
