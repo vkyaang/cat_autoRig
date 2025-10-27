@@ -101,7 +101,7 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 	# connect remap out value to pose attr
 	connect_attr(rmp_node, 'outValue', input_jnt, pose_attr_name)
 	
-	#  previous remapValue curve (peak at the start of *current* pose) ---
+	#  previous remapValue curve
 	if pose_num > 1:
 		prev_rmp = f'rmp_{side}_{region}_{name}_pushPose_{pose_num - 1:04d}'
 		if cmds.objExists(prev_rmp):
