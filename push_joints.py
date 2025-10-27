@@ -76,24 +76,24 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 		scale_mult_name = f'mult_{side}_{region}_{name}_pushPose_scale_{i:04d}'
 		pma_input = f'input3D[{i-1}]'
 	
-	# --- create pose locator ---
+	#  create pose locator
 	loc = cmds.spaceLocator(name=loc_name)[0]
 	cmds.matchTransform(loc, offset_grp)
 	cmds.parent(loc, offset_grp)
 	
-	# --- add pose attr to input joint ---
+	#  add pose attr to input joint
 	cmds.addAttr(input_jnt, ln=pose_attr_name, at='float', min=0, max=1, dv=0, k=True)
 
 	# get pose number
 	pose_num = int(''.join([c for c in pose_attr_name if c.isdigit()]))
 	
-	# --- create or reuse remapValue node ---
+	# create or reuse remapValue node
 	rmp_name = f'rmp_{side}_{region}_{name}_pushPose_{pose_num:04d}'
 	is_new = not cmds.objExists(rmp_name)
 	
 	rmp_node = cmds.createNode('remapValue', n=rmp_name)
 	
-	# --- connect joint's axis to remap input ---
+	# connect joint's axis to remap input
 	cmds.connectAttr(f"{input_jnt}.{axis}", f"{rmp_node}.inputValue", f=True)
 	cmds.setAttr(f"{rmp_node}.inputMin", start_val)
 	cmds.setAttr(f"{rmp_node}.inputMax", end_val)
@@ -101,7 +101,7 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 	# connect remap out value to pose attr
 	connect_attr(rmp_node, 'outValue', input_jnt, pose_attr_name)
 	
-	# --- configure previous remapValue curve (peak at the start of *current* pose) ---
+	#  previous remapValue curve (peak at the start of *current* pose) ---
 	if pose_num > 1:
 		prev_rmp = f'rmp_{side}_{region}_{name}_pushPose_{pose_num - 1:04d}'
 		if cmds.objExists(prev_rmp):
@@ -146,12 +146,12 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 		elif attr == 'rotate':
 			connect_attr(rot_mult, 'output', pma_node, pma_input)
 		
-	# --- connect output mult scale ---
+	# connect output mult scale
 	output_mult_scale_name = f'mult_{side}_{region}_{name}_pushPose_scaleOutput_0001'
 	existing_output_mults = cmds.ls(f'mult_{side}_{region}_{name}_pushPose_scaleOutput_*', type='multiplyDivide') or []
 	total_existing = len(existing_output_mults)
 	
-	# === CASE 1: For the first two poses (pose01, pose02) ===
+	# first two poses (pose01, pose02)
 	if pose_num <= 2:
 		# create only one output mult node (if not already)
 		if not cmds.objExists(output_mult_scale_name):
@@ -166,7 +166,7 @@ def add_pose(name, region, side, offset_grp, input_jnt, push_jnt, axis, start_va
 		else:
 			connect_attr(scale_mult, 'output', output_mult_scale_node, 'input2', force=True)
 	
-	# === CASE 2: For pose03 and higher ===
+	# pose03 and higher
 	else:
 		prev_index = pose_num - 2
 		prev_mult = f'mult_{side}_{region}_{name}_pushPose_scaleOutput_{prev_index:04d}'
