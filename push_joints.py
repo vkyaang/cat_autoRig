@@ -202,7 +202,7 @@ def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis
 		cons_joint1 = "_".join(new_cons01_parts)
 		cons_joint2 = "_".join(new_cons02_parts)
 		
-		skel_jnt = joint.replace('jnt', 'skel')
+		skel_input_jnt = joint.replace('jnt', 'skel')
 		
 		# create push joints
 		jnt_zero_name = f'zero_{side}_{region}_{name}_push_0001'
@@ -220,7 +220,7 @@ def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis
 			cmds.matchTransform(zero, joint)
 			cmds.parent(zero, joint)
 			
-			# create orient contraint
+			# create orient constraint
 			ori_cons = cmds.orientConstraint(cons_joint1, cons_joint2, zero, mo=False)[0]
 			set_attr(ori_cons, 'interpType', 2)
 				
@@ -231,14 +231,13 @@ def create_push_joints(input_joint, cons_joint1, cons_joint2, name, region, axis
 				set_attr(offset, offset_axis, get_attr(offset, offset_axis) + offset_val)
 			
 			# create skeleton push joint
-			skel_zero = cmds.createNode('transform', name=jnt_zero_name.replace('zero', 'zero_skel'), p=skel_jnt)
-			skel_jnt = cmds.createNode('joint', name=skel_jnt_name, p=skel_zero)
-			cmds.matchTransform(skel_zero, jnt)
-			# connect joint to skeleton joint
-			attrs = ['translate', 'rotate', 'scale']
-			for a in attrs:
-				cmds.connectAttr(f'{jnt}.{a}', f'{skel_jnt}.{a}')
+			# skel_zero = cmds.createNode('transform', name=jnt_zero_name.replace('zero', 'zero_skel'), p=skel_jnt)
+			skel_jnt = cmds.createNode('joint', name=skel_jnt_name, p=skel_input_jnt)
+			cmds.matchTransform(skel_jnt, jnt)
 			
+			cmds.pointConstraint(jnt, skel_jnt, mo=False)
+			cmds.orientConstraint(jnt, skel_jnt, mo=False)
+			connect_attr(jnt, 'scale', skel_jnt, 'scale')
 			
 			add_pose(name, region, side, offset, joint, jnt, axis, start_val, end_val, rmp_pos_val)
 
