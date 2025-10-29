@@ -49,6 +49,14 @@ def _ensure_node(name, type_name):
         return name
     return cmds.createNode(type_name, n=name)
 
+def _lr_mirror(name):
+    if "_l_" in name:
+        return name.replace("_l_", "_r_", 1)
+    elif "_r_" in name:
+        return name.replace("_r_", "_l_", 1)
+    return name
+
+
 # ----------------- SETUP ----------------- #
 
 def create_push_setup(input_joint, cons_joint1, cons_joint2, name, region, axis, offset_axis, offset_val):
@@ -61,48 +69,55 @@ def create_push_setup(input_joint, cons_joint1, cons_joint2, name, region, axis,
         cmds.warning("Input joint name does not match expected token pattern.")
         return
 
-    side = parts[1]
+    for side in ["l", "r"]:
+        joint = input_joint.replace("_l_", f"_{side}_").replace("_r_", f"_{side}_")
+        c1 = cons_joint1.replace("_l_", f"_{side}_").replace("_r_", f"_{side}_")
+        c2 = cons_joint2.replace("_l_", f"_{side}_").replace("_r_", f"_{side}_")
 
-    existing = cmds.ls(f"jnt_{side}_{region}_{name}_push_*", type="joint") or []
-    next_idx = len(existing) + 1
-    idx = f"{next_idx:04d}"
+        if not cmds.objExists(joint):
+            cmds.warning("Input joint missing for side {}: {}".format(side, joint))
+            continue
 
-    jnt_name     = f'jnt_{side}_{region}_{name}_push_{idx}'
-    zero_name    = jnt_name.replace('jnt', 'zero')
-    offset_name  = jnt_name.replace('jnt', 'offset')
-    skel_name    = jnt_name.replace('jnt', 'skel')
+        existing = cmds.ls(f"jnt_{side}_{region}_{name}_push_*", type="joint") or []
+        next_idx = len(existing) + 1
+        idx = f"{next_idx:04d}"
 
-    zero  = cmds.createNode('transform', name=zero_name)
-    offset = cmds.createNode('transform', name=offset_name, p=zero)
-    jnt    = cmds.createNode('joint',    name=jnt_name,    p=offset)
+        jnt_name = f'jnt_{side}_{region}_{name}_push_{idx}'
+        zero_name = jnt_name.replace('jnt', 'zero')
+        offset_name = jnt_name.replace('jnt', 'offset')
+        skel_name = jnt_name.replace('jnt', 'skel')
 
-    cmds.matchTransform(zero, input_joint)
-    cmds.parent(zero, input_joint)
+        zero = cmds.createNode('transform', name=zero_name)
+        offset = cmds.createNode('transform', name=offset_name, p=zero)
+        jnt = cmds.createNode('joint', name=jnt_name, p=offset)
 
-    if cmds.objExists(cons_joint1) and cmds.objExists(cons_joint2):
-        ori_cons = cmds.orientConstraint(cons_joint1, cons_joint2, zero, mo=False)[0]
-        set_attr(ori_cons, 'interpType', 2)
+        cmds.matchTransform(zero, joint)
+        cmds.parent(zero, joint)
 
-    if side == 'l':
-        set_attr(offset, offset_axis, get_attr(offset, offset_axis) - offset_val)
-    else:
-        set_attr(offset, offset_axis, get_attr(offset, offset_axis) + offset_val)
+        if cmds.objExists(c1) and cmds.objExists(c2):
+            ori_cons = cmds.orientConstraint(c1, c2, zero, mo=False)[0]
+            set_attr(ori_cons, 'interpType', 2)
 
-    skel_input_parent = input_joint.replace('jnt', 'skel')
-    if not cmds.objExists(skel_input_parent):
-        cmds.warning("Skel parent '{}' does not exist; creating under world.".format(skel_input_parent))
-        skel_input_parent = None
+        if side == 'l':
+            set_attr(offset, offset_axis, get_attr(offset, offset_axis) - offset_val)
+        else:
+            set_attr(offset, offset_axis, get_attr(offset, offset_axis) + offset_val)
 
-    skel_jnt = cmds.createNode('joint', name=skel_name, p=skel_input_parent)
-    cmds.matchTransform(skel_jnt, jnt)
+        skel_input_parent = joint.replace('jnt', 'skel')
+        if not cmds.objExists(skel_input_parent):
+            cmds.warning("Skel parent '{}' does not exist; creating under world.".format(skel_input_parent))
+            skel_input_parent = None
 
-    cmds.pointConstraint(jnt, skel_jnt, mo=False)
-    cmds.orientConstraint(jnt, skel_jnt, mo=False)
-    connect_attr(jnt, 'scale', skel_jnt, 'scale')
+        skel_jnt = cmds.createNode('joint', name=skel_name, p=skel_input_parent)
+        cmds.matchTransform(skel_jnt, jnt)
 
-    cmds.inViewMessage(amg=f"Created {jnt_name}", pos="midCenter", fade=True)
-    print(f"Created {jnt_name}")
-    return jnt_name
+        cmds.pointConstraint(jnt, skel_jnt, mo=False)
+        cmds.orientConstraint(jnt, skel_jnt, mo=False)
+        connect_attr(jnt, 'scale', skel_jnt, 'scale')
+
+        print(f"Created {jnt_name}")
+    return
+
 
 # ----------------- ADD POSE ----------------- #
 
@@ -210,6 +225,18 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
     cmds.inViewMessage(amg=f"Pose {pose_attr_name} added to {push_jnt}", pos="midCenter", fade=True)
     print(f"Added {pose_attr_name} to {push_jnt}")
 
+
+# ----------------- ADD POSE BOTH SIDES ----------------- #
+
+def add_pose_both_sides(push_jnt, input_jnt, name, region, axis, start_val, end_val, rmp_pos_val):
+    add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val, rmp_pos_val)
+
+    mirror_push = _lr_mirror(push_jnt)
+    mirror_input = _lr_mirror(input_jnt)
+    if mirror_push != push_jnt and cmds.objExists(mirror_push) and cmds.objExists(mirror_input):
+        add_pose_to_push(mirror_push, mirror_input, name, region, axis, start_val, end_val, rmp_pos_val)
+
+
 # ----------------- UI ----------------- #
 
 def push_pose_ui():
@@ -262,7 +289,7 @@ def push_pose_ui():
         )
 
     def on_add_pose(*_):
-        add_pose_to_push(
+        add_pose_both_sides(
             cmds.textFieldGrp(push_jnt_field,     q=True, text=True),
             cmds.textFieldGrp(input_for_pose,     q=True, text=True),
             cmds.textFieldGrp(name_for_pose_field,q=True, text=True),
@@ -275,7 +302,7 @@ def push_pose_ui():
 
     cmds.button(label="Create Push Setup (no pose)", h=40, bgc=[0.30, 0.55, 0.30], c=on_setup)
     cmds.separator(h=8)
-    cmds.button(label="Add Pose To Push Joint",     h=40, bgc=[0.30, 0.35, 0.70], c=on_add_pose)
+    cmds.button(label="Add Pose To Push Joint (L & R)", h=40, bgc=[0.30, 0.35, 0.70], c=on_add_pose)
     cmds.separator(h=10)
 
     cmds.showWindow("pushJointUI")
