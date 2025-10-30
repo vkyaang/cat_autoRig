@@ -157,7 +157,7 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 		existing_rmps = cmds.ls(rmp_pat, type='remapValue') or []
 		local_i = len(existing_rmps) + 1
 	else:
-		# ✅ pose_attr OFF → count existing locators instead (fake remap count)
+		# pose_attr OFF → count existing locators instead (fake remap count)
 		fake_locs = cmds.ls(f"loc_{side}_{region}_{name}_pushPose_{push_idx}_*", type="transform") or []
 		local_i = len(fake_locs) + 1
 	
@@ -169,7 +169,7 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 	cmds.parent(loc, offset_grp)
 	
 	# -------------------------
-	# ✅ Pose Attribute path
+	# Pose Attribute path
 	# -------------------------
 	if pose_attr:
 		rmp_name = f'rmp_{side}_{region}_{name}_pushPose_{push_idx}_{pose_number:04d}'
