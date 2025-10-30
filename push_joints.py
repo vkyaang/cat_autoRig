@@ -193,13 +193,12 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 		connect_attr(rmp_node, 'outValue', input_jnt, pose_attr_name, True)
 	else:
 		#  No Remap Path
-		# -------------------------
 		rmp_node = None
 		pose_attr_name = None
-		# no remap, no pose attr created, no connection
+		# no remap
 		pass
 	
-	# MultiplyDivide nodes (same)
+	# MultiplyDivide nodes
 	mdT = cmds.createNode('multiplyDivide',
 						  n=f'mult_{side}_{region}_{name}_pushPose_trans_{push_idx}_{pose_number:04d}')
 	mdR = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{name}_pushPose_rot_{push_idx}_{pose_number:04d}')
@@ -207,14 +206,14 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 						  n=f'mult_{side}_{region}_{name}_pushPose_scale_{push_idx}_{pose_number:04d}')
 	set_attr(mdS, 'operation', 3)
 	
-	# If using pose attr, hook it in
+	# If using pose attr connect attr
 	if pose_attr:
 		for ax in 'XYZ':
 			connect_attr(input_jnt, pose_attr_name, mdT, f'input2{ax}', True)
 			connect_attr(input_jnt, pose_attr_name, mdR, f'input2{ax}', True)
 			connect_attr(input_jnt, pose_attr_name, mdS, f'input2{ax}', True)
 	
-	# loc drives input1 always
+	# loc drives
 	connect_attr(loc, 'translate', mdT, 'input1', True)
 	connect_attr(loc, 'rotate', mdR, 'input1', True)
 	connect_attr(loc, 'scale', mdS, 'input1', True)
@@ -229,7 +228,7 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 			pma_node = pma_name
 		connect_attr(md, 'output', pma_node, f'input3D[{pose_number - 1}]', True)
 	
-	# Scale chain logic unchanged
+	# Scale chain
 	scale_base = f"mult_{side}_{region}_{name}_pushPose_scaleOutput_{push_idx}"
 	if pose_number <= 2:
 		out = f"{scale_base}_0001"
