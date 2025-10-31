@@ -171,34 +171,33 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 	# -------------------------
 	# Pose Attribute path
 	# -------------------------
+	rmp_name = f'rmp_{side}_{region}_{name}_pushPose_{push_idx}_{pose_number:04d}'
+	rmp_node = cmds.createNode('remapValue', n=rmp_name)
+	connect_attr(input_jnt, axis, rmp_node, 'inputValue', True)
+	set_attr(rmp_node, 'inputMin', start_val)
+	set_attr(rmp_node, 'inputMax', end_val)
+	
+	# remap chain logic stays SAME
+	if pose_number > 1:
+		prev_rmp = f'rmp_{side}_{region}_{name}_pushPose_{push_idx}_{(pose_number - 1):04d}'
+		if cmds.objExists(prev_rmp):
+			set_attr(prev_rmp, "value[1].value_Position", rmp_pos_val)
+			set_attr(prev_rmp, "value[1].value_FloatValue", 1)
+			set_attr(prev_rmp, "value[1].value_Interp", 1)
+			set_attr(prev_rmp, "value[2].value_Position", 1)
+			set_attr(prev_rmp, "value[2].value_FloatValue", 0)
 	if pose_attr:
-		rmp_name = f'rmp_{side}_{region}_{name}_pushPose_{push_idx}_{pose_number:04d}'
-		rmp_node = cmds.createNode('remapValue', n=rmp_name)
-		connect_attr(input_jnt, axis, rmp_node, 'inputValue', True)
-		set_attr(rmp_node, 'inputMin', start_val)
-		set_attr(rmp_node, 'inputMax', end_val)
-		
-		# remap chain logic stays SAME
-		if pose_number > 1:
-			prev_rmp = f'rmp_{side}_{region}_{name}_pushPose_{push_idx}_{(pose_number - 1):04d}'
-			if cmds.objExists(prev_rmp):
-				set_attr(prev_rmp, "value[1].value_Position", rmp_pos_val)
-				set_attr(prev_rmp, "value[1].value_FloatValue", 1)
-				set_attr(prev_rmp, "value[1].value_Interp", 1)
-				set_attr(prev_rmp, "value[2].value_Position", 1)
-				set_attr(prev_rmp, "value[2].value_FloatValue", 0)
 		
 		# Create pose attribute and drive with remap
 		pose_attr_name = use_pose_attr(input_jnt)
 		connect_attr(rmp_node, 'outValue', input_jnt, pose_attr_name, True)
 	else:
-		#  No Remap Path
-		rmp_node = None
+		# no pose attr
+		# rmp_node = None
 		pose_attr_name = None
-		# no remap
 		pass
 	
-	# MultiplyDivide nodes
+	# MultiplyDivide nodes (same)
 	mdT = cmds.createNode('multiplyDivide',
 						  n=f'mult_{side}_{region}_{name}_pushPose_trans_{push_idx}_{pose_number:04d}')
 	mdR = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{name}_pushPose_rot_{push_idx}_{pose_number:04d}')
@@ -206,14 +205,14 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 						  n=f'mult_{side}_{region}_{name}_pushPose_scale_{push_idx}_{pose_number:04d}')
 	set_attr(mdS, 'operation', 3)
 	
-	# If using pose attr connect attr
+	# If using pose attr, hook it in
 	if pose_attr:
 		for ax in 'XYZ':
 			connect_attr(input_jnt, pose_attr_name, mdT, f'input2{ax}', True)
 			connect_attr(input_jnt, pose_attr_name, mdR, f'input2{ax}', True)
 			connect_attr(input_jnt, pose_attr_name, mdS, f'input2{ax}', True)
 	
-	# loc drives
+	# loc drives input1
 	connect_attr(loc, 'translate', mdT, 'input1', True)
 	connect_attr(loc, 'rotate', mdR, 'input1', True)
 	connect_attr(loc, 'scale', mdS, 'input1', True)
@@ -254,24 +253,45 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 
 # ----------------- AUTO ADD ----------------- #
 
-def auto_add_pose(push_jnt, input_jnt, name, region, axis, start_val, end_val, rmp1, rmp2, pose_attr=True):
-	total = end_val - start_val
-	one_third = start_val + total * (1.0 / 3.0)
-	two_third = start_val + total * (2.0 / 3.0)
+def auto_add_pose(push_jnt, input_jnt, name, region, axis,
+				  start_val, end_val, inbetween_list, rmp_list, pose_attr=True):
+	"""
+	auto split poses into rmp values
+	N in-betweens -> N+1 poses
+	"""
+	# Build raw ranges in the exact order
+	ranges = [start_val] + inbetween_list + [end_val]
+	num_poses = len(ranges) - 1  # N+1 poses
 	
-	add_pose_both_sides(push_jnt, input_jnt, name, region, axis, start_val, two_third, rmp1, pose_attr)
-	add_pose_both_sides(push_jnt, input_jnt, name, region, axis, one_third, end_val, rmp2, pose_attr)
-	add_pose_both_sides(push_jnt, input_jnt, name, region, axis, two_third, end_val, 1.0, pose_attr)
+	for i in range(num_poses):
+		s = ranges[i]
+		e = ranges[i + 1]
+		
+		if i == 0:
+			# first add creates remap_0001; no previous to set, rmp ignored
+			rmp = 0.0
+		elif i < num_poses - 1:
+			# middle poses: set midpoint
+			rmp = rmp_list[i - 1]
+		else:
+			# last pose: set the previous pose's end falloff to 0
+			rmp = 1.0
+		
+		add_pose_both_sides(push_jnt, input_jnt, name, region, axis, s, e, rmp, pose_attr)
 	
 	side = _side_from_name(push_jnt)
 	push_idx = _push_index_from_name(push_jnt)
-	mid_rmp = cmds.ls(f"rmp_{side}_{region}_{name}_pushPose_{push_idx}_0002", type="remapValue")
-	
-	if mid_rmp:
-		mid_rmp = mid_rmp[0]
-		cmds.setAttr(f"{mid_rmp}.value[1].value_Position", rmp2)
-	
-	cmds.inViewMessage(amg="<hl>Auto poses added (mid rmp preserved)</hl>", pos="midCenter", fade=True)
+	for k, user_mid in enumerate(rmp_list, start=1):  # k = 1..len(rmp_list) mapping to remap_0001.._000..
+		rmp_node = f"rmp_{side}_{region}_{name}_pushPose_{push_idx}_{k:04d}"
+		if cmds.objExists(rmp_node):
+			try:
+				cmds.setAttr(f"{rmp_node}.value[1].value_Position", user_mid)
+				cmds.setAttr(f"{rmp_node}.value[1].value_FloatValue", 1)
+				cmds.setAttr(f"{rmp_node}.value[1].value_Interp", 1)
+				cmds.setAttr(f"{rmp_node}.value[2].value_Position", 1)
+				cmds.setAttr(f"{rmp_node}.value[2].value_FloatValue", 0)
+			except Exception:
+				pass
 
 
 # ----------------- BOTH SIDES ----------------- #
@@ -321,8 +341,11 @@ def push_pose_ui():
 	start_val_field = cmds.floatFieldGrp(label="Pose Start:", value1=0.0, cw2=(140, 100))
 	end_val_field = cmds.floatFieldGrp(label="Pose End:", value1=90.0, cw2=(140, 100))
 	pos_val_field = cmds.floatFieldGrp(label="Remap Pos Value:", value1=0.5, cw2=(140, 100))
-	auto_rmp1_field = cmds.floatFieldGrp(label="Auto RMP 1 (wide):", value1=0.5, cw2=(140, 100))
-	auto_rmp2_field = cmds.floatFieldGrp(label="Auto RMP 2 (mid):", value1=0.5, cw2=(140, 100))
+	
+	# Flexible in-between UI
+	# Multi in-between input and RMP list
+	inbetween_field = cmds.textFieldGrp(label="In-between Angles (comma):", text="", cw2=(140, 260))
+	rmp_list_field = cmds.textFieldGrp(label="RMP list (comma):", text="", cw2=(140, 260))
 	
 	global use_pose_attr_checkbox
 	use_pose_attr_checkbox = cmds.checkBox(label="Use Pose Attribute", value=True)
@@ -363,6 +386,24 @@ def push_pose_ui():
 	
 	def on_auto_pose(*_):
 		pose_flag = cmds.checkBox(use_pose_attr_checkbox, q=True, value=True)
+		
+		# Parse in-between values (allow negative)
+		ib_text = cmds.textFieldGrp(inbetween_field, q=True, text=True)
+		inbetweens = []
+		if ib_text.strip():
+			inbetweens = [float(v) for v in ib_text.replace(" ", "").split(",") if v != ""]
+		
+		# Parse RMP values
+		rmp_text = cmds.textFieldGrp(rmp_list_field, q=True, text=True)
+		rmp_values = []
+		if rmp_text.strip():
+			rmp_values = [float(v) for v in rmp_text.replace(" ", "").split(",") if v != ""]
+		
+		# Validate matching count
+		if len(rmp_values) != len(inbetweens) and len(inbetweens) > 0:
+			cmds.warning("RMP count MUST match in-between count")
+			return
+		
 		auto_add_pose(
 			cmds.textFieldGrp(push_jnt_field, q=True, text=True),
 			cmds.textFieldGrp(input_for_pose, q=True, text=True),
@@ -371,12 +412,12 @@ def push_pose_ui():
 			cmds.optionMenuGrp(axis_field, q=True, v=True),
 			cmds.floatFieldGrp(start_val_field, q=True, value1=True),
 			cmds.floatFieldGrp(end_val_field, q=True, value1=True),
-			cmds.floatFieldGrp(auto_rmp1_field, q=True, value1=True),
-			cmds.floatFieldGrp(auto_rmp2_field, q=True, value1=True),
+			inbetweens,
+			rmp_values,
 			pose_flag
 		)
 	
-	cmds.button(label="AUTO Add 3 Split Poses", h=40, bgc=[0.65, 0.45, 0.20], c=on_auto_pose)
+	cmds.button(label="AUTO Add Split Poses", h=40, bgc=[0.65, 0.45, 0.20], c=on_auto_pose)
 	cmds.separator(h=10)
 	
 	cmds.showWindow("pushJointUI")
