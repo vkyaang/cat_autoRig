@@ -256,32 +256,39 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 def auto_add_pose(push_jnt, input_jnt, name, region, axis,
 				  start_val, end_val, inbetween_list, rmp_list, pose_attr=True):
 	"""
-	auto split poses into rmp values
-	N in-betweens -> N+1 poses
-	"""
-	# Build raw ranges in the exact order
-	ranges = [start_val] + inbetween_list + [end_val]
-	num_poses = len(ranges) - 1  # N+1 poses
+    auto split poses into rmp values
+    N in-betweens -> N+1 poses
+    """
+	# ----------------- NEW OVERLAP LOGIC ----------------- #
 	
-	for i in range(num_poses):
-		s = ranges[i]
-		e = ranges[i + 1]
-		
+	ib = list(inbetween_list)
+	
+	ranges = []
+	
+	# 1) First pose: start -> second inbetween
+	if len(ib) >= 2:
+		ranges.append((start_val, ib[1]))
+	else:
+		ranges.append((start_val, end_val))
+	
+	# 2) Middle + last: each inbetween -> end
+	for val in ib:
+		ranges.append((val, end_val))
+	
+	# Apply RMP mapping to poses
+	for i, (s, e) in enumerate(ranges):
 		if i == 0:
-			# first add creates remap_0001; no previous to set, rmp ignored
-			rmp = 0.0
-		elif i < num_poses - 1:
-			# middle poses: set midpoint
-			rmp = rmp_list[i - 1]
+			r = 0.0
+		elif i < len(ranges) - 1:
+			r = rmp_list[i - 1]
 		else:
-			# last pose: set the previous pose's end falloff to 0
-			rmp = 1.0
+			r = 1.0
 		
-		add_pose_both_sides(push_jnt, input_jnt, name, region, axis, s, e, rmp, pose_attr)
+		add_pose_both_sides(push_jnt, input_jnt, name, region, axis, s, e, r, pose_attr)
 	
 	side = _side_from_name(push_jnt)
 	push_idx = _push_index_from_name(push_jnt)
-	for k, user_mid in enumerate(rmp_list, start=1):  # k = 1..len(rmp_list) mapping to remap_0001.._000..
+	for k, user_mid in enumerate(rmp_list, start=1):
 		rmp_node = f"rmp_{side}_{region}_{name}_pushPose_{push_idx}_{k:04d}"
 		if cmds.objExists(rmp_node):
 			try:
@@ -303,6 +310,33 @@ def add_pose_both_sides(push_jnt, input_jnt, name, region, axis, start_val, end_
 	mirror_input = _lr_mirror(input_jnt)
 	if mirror_push != push_jnt and cmds.objExists(mirror_push) and cmds.objExists(mirror_input):
 		add_pose_to_push(mirror_push, mirror_input, name, region, axis, start_val, end_val, rmp_pos_val, pose_attr)
+
+
+def mirror_push():
+	# find all left pushPose locators + offsets
+	left_locs = cmds.ls("loc_l_*_pushPose_*", transforms=True) or []
+	left_offset = cmds.ls("offset_l_*_push_*", transforms=True) or []
+	
+	left_push = left_locs + left_offset
+	
+	for left in left_push:
+		parts = left.split('_')
+		parts[1] = "r"  # swap l to r
+		right = "_".join(parts)
+		
+		if not cmds.objExists(right):
+			cmds.warning(f"Missing: {right}")
+			continue
+		
+		tx, ty, tz = cmds.getAttr(left + ".translate")[0]
+		
+		# mirror
+		tx = -tx
+		ty = -ty
+		tz = -tz
+		
+		cmds.setAttr(right + ".translate", tx, ty, tz)
+		print(f"Mirrored {left} --> {right}")
 
 
 # ----------------- UI ----------------- #
@@ -418,6 +452,13 @@ def push_pose_ui():
 		)
 	
 	cmds.button(label="AUTO Add Split Poses", h=40, bgc=[0.65, 0.45, 0.20], c=on_auto_pose)
+	cmds.separator(h=10)
+	
+	def on_mirror_push(*_):
+		mirror_push()
+	
+	cmds.separator(h=8)
+	cmds.button(label="Mirror Push Pose (L → R)", h=40, bgc=[0.7, 0.3, 0.3], c=on_mirror_push)
 	cmds.separator(h=10)
 	
 	cmds.showWindow("pushJointUI")
