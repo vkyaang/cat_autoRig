@@ -256,16 +256,16 @@ def add_pose_to_push(push_jnt, input_jnt, name, region, axis, start_val, end_val
 def auto_add_pose(push_jnt, input_jnt, name, region, axis,
 				  start_val, end_val, inbetween_list, rmp_list, pose_attr=True):
 	"""
-    auto split poses into rmp values
-    N in-betweens -> N+1 poses
-    """
+	auto split poses into rmp values
+	N in-betweens -> N+1 poses
+	"""
 	# ----------------- NEW OVERLAP LOGIC ----------------- #
 	
-	ib = list(inbetween_list)
+	ib = list(inbetween_list)  # preserve user order
 	
 	ranges = []
 	
-	# 1) First pose: start -> second inbetween
+	# 1) First pose: start -> second inbetween (if exists) else end
 	if len(ib) >= 2:
 		ranges.append((start_val, ib[1]))
 	else:
@@ -329,6 +329,8 @@ def mirror_push():
 			continue
 		
 		tx, ty, tz = cmds.getAttr(left + ".translate")[0]
+		rx, ry, rz = cmds.getAttr(left + ".rotate")[0]
+		sx, sy, sz = cmds.getAttr(left + ".scale")[0]
 		
 		# mirror
 		tx = -tx
@@ -336,6 +338,8 @@ def mirror_push():
 		tz = -tz
 		
 		cmds.setAttr(right + ".translate", tx, ty, tz)
+		cmds.setAttr(right + ".rotate", rx, ry, rz)
+		cmds.setAttr(right + ".scale", sx, sy, sz)
 		print(f"Mirrored {left} --> {right}")
 
 
@@ -401,11 +405,20 @@ def push_pose_ui():
 	
 	def on_add_pose(*_):
 		pose_flag = cmds.checkBox(use_pose_attr_checkbox, q=True, value=True)
+		
+		push_j = cmds.textFieldGrp(push_jnt_field, q=True, text=True)
+		inp = cmds.textFieldGrp(input_for_pose, q=True, text=True)
+		
+		parts = push_j.split("_")
+		# jnt_l_ft_upperlegInn_push_0001  →  ["jnt","l","ft","upperlegInn","push","0001"]
+		region = parts[2]
+		name = parts[3]
+		
 		add_pose_both_sides(
-			cmds.textFieldGrp(push_jnt_field, q=True, text=True),
-			cmds.textFieldGrp(input_for_pose, q=True, text=True),
-			cmds.textFieldGrp(name_for_pose_field, q=True, text=True),
-			cmds.textFieldGrp(region_for_pose_field, q=True, text=True),
+			push_j,
+			inp,
+			name,  # << use parsed name
+			region,  # << use parsed region
 			cmds.optionMenuGrp(axis_field, q=True, v=True),
 			cmds.floatFieldGrp(start_val_field, q=True, value1=True),
 			cmds.floatFieldGrp(end_val_field, q=True, value1=True),
@@ -421,6 +434,13 @@ def push_pose_ui():
 	def on_auto_pose(*_):
 		pose_flag = cmds.checkBox(use_pose_attr_checkbox, q=True, value=True)
 		
+		push_j = cmds.textFieldGrp(push_jnt_field, q=True, text=True)
+		inp = cmds.textFieldGrp(input_for_pose, q=True, text=True)
+		
+		parts = push_j.split("_")
+		region = parts[2]
+		name = parts[3]
+		
 		# Parse in-between values (allow negative)
 		ib_text = cmds.textFieldGrp(inbetween_field, q=True, text=True)
 		inbetweens = []
@@ -433,16 +453,15 @@ def push_pose_ui():
 		if rmp_text.strip():
 			rmp_values = [float(v) for v in rmp_text.replace(" ", "").split(",") if v != ""]
 		
-		# Validate matching count
 		if len(rmp_values) != len(inbetweens) and len(inbetweens) > 0:
 			cmds.warning("RMP count MUST match in-between count")
 			return
 		
 		auto_add_pose(
-			cmds.textFieldGrp(push_jnt_field, q=True, text=True),
-			cmds.textFieldGrp(input_for_pose, q=True, text=True),
-			cmds.textFieldGrp(name_for_pose_field, q=True, text=True),
-			cmds.textFieldGrp(region_for_pose_field, q=True, text=True),
+			push_j,
+			inp,
+			name,  # parsed name
+			region,  # parsed region
 			cmds.optionMenuGrp(axis_field, q=True, v=True),
 			cmds.floatFieldGrp(start_val_field, q=True, value1=True),
 			cmds.floatFieldGrp(end_val_field, q=True, value1=True),
