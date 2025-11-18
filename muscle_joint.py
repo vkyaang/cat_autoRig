@@ -186,6 +186,10 @@ def create_curve_on_joint(input_jnt, side):
 	region = token[2]
 	desc = token[3]
 	
+	# create parent group
+	parent_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_muscleData_0001')
+	curve_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_curves_0001', p=parent_grp)
+	
 	input_jnt = input_jnt.replace('_l_', f'_{side}_')
 	
 	children = cmds.listRelatives(input_jnt, c=True, ad=True, type='joint')[::-1]
@@ -203,6 +207,7 @@ def create_curve_on_joint(input_jnt, side):
 	curve = cmds.curve(n=f'crv_{side}_{region}_{desc}_0001', p=positions, d=2)
 	crv_shape = cmds.listRelatives(curve, c=True, type='shape')[0]
 	crv_shape = cmds.rename(crv_shape, f'{curve}Shape')
+	cmds.parent(curve, curve_grp)
 	
 	# create up curve
 	up_positions = []
@@ -229,6 +234,7 @@ def create_curve_on_joint(input_jnt, side):
 	up_curve = cmds.curve(n=f'crv_{side}_{region}_{desc}_up_0001', p=up_positions, d=2)
 	up_crv_shape = cmds.listRelatives(up_curve, c=True, type='shape')[0]
 	up_crv_shape = cmds.rename(up_crv_shape, f'{up_curve}Shape')
+	cmds.parent(up_curve, curve_grp)
 	
 	# create uvpin
 	uv_pin = cmds.createNode('uvPin', n=f'uvPin_{side}_{region}_{desc}_0001')
@@ -241,7 +247,8 @@ def create_curve_on_joint(input_jnt, side):
 
 	# create output locators
 	locators = []
-	loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_data_0001')
+	loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_data_0001', p=parent_grp)
+	
 	for i in range(5):
 		loc = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{i+1:04d}')[0]
 		cmds.parent(loc, loc_grp)
@@ -272,17 +279,20 @@ def create_curve_on_joint(input_jnt, side):
 		elif i == 4:
 			set_attr(uv_pin, f'coordinate[{i}].coordinateU', 3)
 		
-	return joints, locators, curve, up_curve
+	return joints, locators, curve, up_curve, parent_grp
+
 def create_muscle_jnt_controllers(input_jnt, side):
 	"""
 	create three controllers for main joints
 	"""
 	input_jnt = input_jnt.replace('_l_', f'_{side}_')
-	joints, locators, curve, up_curve = create_curve_on_joint(input_jnt, side)
+	joints, locators, curve, up_curve, parent_grp = create_curve_on_joint(input_jnt, side)
 	tokens = input_jnt.split('_')
 	region = tokens[2]
 	desc = tokens[3]
 	
+	# create control group
+	ctrl_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_ctrls_0001', p=parent_grp)
 	# create controllers
 	label_map = {0: 'start', 2: 'mid', 4: 'end'}
 	last_jnt = None
@@ -311,6 +321,8 @@ def create_muscle_jnt_controllers(input_jnt, side):
 			# create hierarchy
 			create_control_hierarchy(ctrl)
 			zero, offset, driven, connect = get_parent_grp(ctrl)
+			cmds.parent(zero, ctrl_grp)
+			
 			last_jnt = jnt
 			
 			ctrl_joints.append(jnt)
@@ -386,12 +398,13 @@ def create_muscle_jnt_controllers(input_jnt, side):
 										wut='None',
 										mo=True)[0]
 	
-	# create driver locators
+	# --------------------- create driver locators
 	driver_locators = []
 	loc_connects = []
 	loc_drivens = []
 	loc_offsets = []
 	
+	driver_loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_driverLoc_0001', p=parent_grp)
 	for name in ['start', 'end']:
 		loc = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{name}Pos_0001')[0]
 		if name == 'start':
@@ -403,6 +416,8 @@ def create_muscle_jnt_controllers(input_jnt, side):
 		
 		create_control_hierarchy(loc)
 		loc_zero, loc_offset, loc_driven, loc_connect = get_parent_grp(loc)
+		cmds.parent(loc_zero, driver_loc_grp)
+		
 		loc_drivens.append(loc_driven)
 		loc_connects.append(loc_connect)
 		loc_offsets.append(loc_offset)
