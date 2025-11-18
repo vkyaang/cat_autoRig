@@ -434,10 +434,21 @@ def create_muscle_jnt_controllers(input_jnt, side):
 	cmds.parentConstraint(joints[0], loc_drivens[0], mo=True)
 	cmds.parentConstraint(joints[-1], loc_drivens[-1], mo=True)
 	
+	return loc_drivens
 	
-def create_muscle_set_up(input_jnt):
+def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2):
 	for side in ['l', 'r']:
-		create_muscle_jnt_controllers(input_jnt, side)
+		loc_drivens = create_muscle_jnt_controllers(input_jnt, side)
 		
-
-create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001')
+		# locator driven groups
+		loc_start = loc_drivens[0]
+		loc_end = loc_drivens[-1]
+		
+		# constraint driver locators driven group
+		jnt1 = constraint_jnt_1.replace('_l_', f'_{side}_')
+		jnt2 = constraint_jnt_2.replace('_l_', f'_{side}_')
+		
+		cmds.parentConstraint(jnt1, loc_start, mo=True)
+		cmds.parentConstraint(jnt2, loc_end, mo=True)
+		
+create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001', 'inSkel_l_ft_upperlegTwist_0001', 'inSkel_l_ft_kneeTwist_0001')
