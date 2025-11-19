@@ -460,9 +460,10 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num):
 		for axis in 'XYZ':
 			connect_attr(loc_drivens[0], f'{attr}{axis}', driven_grps[0], f'{attr}{axis}')
 			connect_attr(loc_drivens[-1], f'{attr}{axis}', driven_grps[-1], f'{attr}{axis}')
-		
-	# cmds.parentConstraint(joints[0], loc_drivens[0], mo=True)
-	# cmds.parentConstraint(joints[-1], loc_drivens[-1], mo=True)
+	
+	for i, ctrl in enumerate(ctrls):
+		cons = cmds.parentConstraint(ctrl, joints[i], mo=True)[0]
+		set_attr(cons, 'interpType', 2)
 	
 	return loc_drivens
 
@@ -479,8 +480,8 @@ def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2):
 		jnt1 = constraint_jnt_1.replace('_l_', f'_{side}_')
 		jnt2 = constraint_jnt_2.replace('_l_', f'_{side}_')
 		
-		cons1 = cmds.parentConstraint(jnt1, jnt2, loc_start, mo=True)[0]
-		cons2 = cmds.parentConstraint(jnt1, jnt2, loc_end, mo=True)[0]
+		cons1 = cmds.parentConstraint(jnt1, loc_start, mo=True)[0]
+		cons2 = cmds.parentConstraint(jnt2, loc_end, mo=True)[0]
 		set_attr(cons1, 'interpType', 2)
 		set_attr(cons2, 'interpType', 2)
 		
