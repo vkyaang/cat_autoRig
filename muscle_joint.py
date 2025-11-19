@@ -180,7 +180,7 @@ def mirror_curve_shape(left_ctrl, right_ctrl):
 
 # ----------------------------------------
 
-def create_curve_on_joint(input_jnt, side):
+def create_curve_on_joint(input_jnt, side, jnt_num=5):
 	token = input_jnt.split('_')
 	ori_side = _side_from_name(input_jnt)
 	region = token[2]
@@ -241,52 +241,41 @@ def create_curve_on_joint(input_jnt, side):
 	connect_attr(f'{crv_shape}', 'worldSpace[0]', uv_pin, 'deformedGeometry')
 	connect_attr(f'{up_crv_shape}', 'worldSpace[0]', uv_pin, 'railCurve')
 	set_attr(uv_pin, 'normalOverride', 1)
-	set_attr(uv_pin, 'normalizedIsoParms', 0)
 	set_attr(uv_pin, 'normalAxis', 1)
 	set_attr(uv_pin, 'tangentAxis', 0)
-
-	# create output locators
-	locators = []
-	loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_data_0001', p=parent_grp)
 	
-	for i in range(5):
-		loc = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{i+1:04d}')[0]
-		cmds.parent(loc, loc_grp)
+	#create bind joints
+	bind_joints = []
+	jnt_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_joints_0001', p=parent_grp)
+
+	for i in range(jnt_num):
+		jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_{desc}_bind_{i + 1:04d}')
+		cmds.parent(jnt, jnt_grp)
 
 		# create decompose node
-		dec_node = cmds.createNode('decomposeMatrix', n=f'dec_{side}_{region}_{desc}_{i+1:04d}')
+		dec_node = cmds.createNode('decomposeMatrix', n=f'dec_{side}_{region}_{desc}_{i + 1:04d}')
 		# connect uv pin output
 		connect_attr(uv_pin, f'outputMatrix[{i}]', dec_node, 'inputMatrix')
 
-		connect_attr(dec_node, 'outputTranslate', loc, 'translate')
-		connect_attr(dec_node, 'outputRotate', loc, 'rotate')
+		connect_attr(dec_node, 'outputTranslate', jnt, 'translate')
+		connect_attr(dec_node, 'outputRotate', jnt, 'rotate')
 
-		locators.append(loc)
+		bind_joints.append(jnt)
 
 		# set uvpin uv coorinates
-		if i == 0:
-			set_attr(uv_pin, f'coordinate[{i}].coordinateU', 0)
-			continue
-		elif i == 1:
-			set_attr(uv_pin, f'coordinate[{i}].coordinateU', 0.5)
-			continue
-		elif i == 2:
-			set_attr(uv_pin, f'coordinate[{i}].coordinateU', 1.5)
-			continue
-		elif i == 3:
-			set_attr(uv_pin, f'coordinate[{i}].coordinateU', 2.5)
-			continue
-		elif i == 4:
-			set_attr(uv_pin, f'coordinate[{i}].coordinateU', 3)
-		
-	return joints, locators, curve, up_curve, parent_grp
+		# evenly spaced UVs based on joint number
+		for i in range(jnt_num):
+			u = float(i) / (jnt_num - 1)  # value between 0 and 1
+			set_attr(uv_pin, f'coordinate[{i}].coordinateU', u)
+	
+	return joints, positions, curve, up_curve, parent_grp
 
-def create_muscle_jnt_controllers(input_jnt, side):
+def create_muscle_jnt_controllers(input_jnt, side, jnt_num):
 	"""
 	create three controllers for main joints
 	"""
 	input_jnt = input_jnt.replace('_l_', f'_{side}_')
-	joints, locators, curve, up_curve, parent_grp = create_curve_on_joint(input_jnt, side)
+	joints, positions, curve, up_curve, parent_grp = create_curve_on_joint(input_jnt, side, jnt_num)
 	tokens = input_jnt.split('_')
 	region = tokens[2]
 	desc = tokens[3]
@@ -294,7 +283,7 @@ def create_muscle_jnt_controllers(input_jnt, side):
 	# create control group
 	ctrl_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_ctrls_0001', p=parent_grp)
 	# create controllers
-	label_map = {0: 'start', 2: 'mid', 4: 'end'}
+	label_map = {0: 'start', 1: 'mid', 2: 'end'}
 	last_jnt = None
 	
 	ctrl_joints = []
@@ -302,14 +291,16 @@ def create_muscle_jnt_controllers(input_jnt, side):
 	connect_grps = []
 	driven_grps = []
 	
-	for i, loc in enumerate(locators):
+	for i, pos in enumerate(joints):
 		jnt = None
 		if i in label_map:
 			label = label_map[i]
 			# create controller
 			ctrl_name = f'ctrl_{side}_{region}_{desc}_{label}_0001'
 			ctrl = circle(name=ctrl_name)
-			cmds.matchTransform(ctrl, loc)
+			set_attr(ctrl, 'rotateZ', 90)
+			cmds.makeIdentity(ctrl, apply=True, t=False, r=True, s=False, n=False)
+			cmds.matchTransform(ctrl, pos)
 			
 			# create joint
 			jnt_name = f'jnt_{side}_{region}_{desc}_{label}_0001'
@@ -335,42 +326,65 @@ def create_muscle_jnt_controllers(input_jnt, side):
 				tan_label = 'start'  # use previous label
 				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_0001'
 				tan_jnt = cmds.createNode('joint', n=tan_name)
-				cmds.matchTransform(tan_jnt, locators[1])
-				cmds.makeIdentity(tan_jnt, apply=True, t=False, r=True, s=False, n=False)
-				cmds.parent(tan_jnt, last_jnt)
-				ctrl_joints.append(tan_jnt)
-			
-				# add tangent attr to ctrl
-				add_attr(ctrl, 'tangent', 'float', 0)
-				# connect to tangent joint
-				adl_node = cmds.createNode('addDoubleLinear', n=f'adl_{side}_{region}_{desc}_{tan_label}Tangent_0001')
-				connect_attr(ctrl, 'tangent', adl_node, 'input1')
-				set_attr(adl_node, 'input2', 2)
-				connect_attr(adl_node, 'output', tan_jnt, 'translateX')
-		
-			elif i == 4:
-				tan_label = 'end'  # use previous label
-				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_0001'
-				tan_jnt = cmds.createNode('joint', n=tan_name)
-				cmds.matchTransform(tan_jnt, locators[-2])
+				
+				# get pos
+				cmds.xform(tan_jnt, ws=True, t=positions[1])
 				cmds.makeIdentity(tan_jnt, apply=True, t=False, r=True, s=False, n=False)
 				cmds.parent(tan_jnt, last_jnt)
 				cmds.joint(last_jnt, e=True,
-						   oj='xyz',  # Orientation order: xzy, xyz, yzx, etc.
-						   secondaryAxisOrient='yup',  # Direction for secondary axis
+						   oj='xzy',  # Orientation order: xzy, xyz, yzx, etc.
+						   secondaryAxisOrient='ydown',  # Direction for secondary axis
 						   ch=True,  # Preserve children
 						   zso=True)  # Zero scale orientation
+				# clear joint orient
+				for attr in 'XYZ':
+					set_attr(tan_jnt, f'jointOrient{attr}', 0)
+				
+				# add tangent attr to ctrl
+				add_attr(ctrl, 'tangent', 'float', 0)
+				# connect to tangent joint
+				adl_node = cmds.createNode('addDoubleLinear', n=f'adl_{side}_{region}_{desc}_{tan_label}Tangent_0001')
+				connect_attr(ctrl, 'tangent', adl_node, 'input1')
+				tx = get_attr(tan_jnt, 'translateX')
+				set_attr(adl_node, 'input2', tx)
+				connect_attr(adl_node, 'output', tan_jnt, 'translateX')
+
+				ctrl_joints.append(tan_jnt)
+				
+				continue
+			elif i == 2:
+				tan_label = 'end'  # use previous label
+				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_0001'
+				tan_jnt = cmds.createNode('joint', n=tan_name)
+				
+				cmds.xform(tan_jnt, ws=True, t=positions[-2])
+				cmds.makeIdentity(tan_jnt, apply=True, t=False, r=True, s=False, n=False)
+				cmds.parent(tan_jnt, last_jnt)
+				cmds.joint(last_jnt, e=True,
+						   oj='xzy',  # Orientation order: xzy, xyz, yzx, etc.
+						   secondaryAxisOrient='ydown',  # Direction for secondary axis
+						   ch=True,  # Preserve children
+						   zso=True)  # Zero scale orientation
+				# clear joint orient
+				for attr in 'XYZ':
+					set_attr(tan_jnt, f'jointOrient{attr}', 0)
+					
 				ctrl_joints.append(tan_jnt)
 				# add tangent attr to ctrl
 				add_attr(ctrl, 'tangent', 'float', 0)
 				# connect to tangent joint
 				adl_node = cmds.createNode('addDoubleLinear', n=f'adl_{side}_{region}_{desc}_{tan_label}Tangent_0001')
 				connect_attr(ctrl, 'tangent', adl_node, 'input1')
-				set_attr(adl_node, 'input2', 2)
+				tx = get_attr(tan_jnt, 'translateX')
+				set_attr(adl_node, 'input2', tx)
 				connect_attr(adl_node, 'output', tan_jnt, 'translateX')
 	
 	ctrl_joints[-1], ctrl_joints[-2] = ctrl_joints[-2], ctrl_joints[-1]
 	
+	#vis off
+	for jnt in ctrl_joints:
+		set_attr(jnt, 'visibility', 0)
+		
 	# bind skin to curve
 	crv_skin = cmds.skinCluster(ctrl_joints, curve)[0]
 	up_crv_skin = cmds.skinCluster(ctrl_joints, up_curve)[0]
@@ -406,22 +420,23 @@ def create_muscle_jnt_controllers(input_jnt, side):
 	
 	driver_loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_driverLoc_0001', p=parent_grp)
 	for name in ['start', 'end']:
-		loc = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{name}Pos_0001')[0]
+		pos = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{name}Pos_0001')[0]
+		set_attr(pos, 'visibility', 0)
 		if name == 'start':
-			cmds.matchTransform(loc, ctrls[0])
+			cmds.matchTransform(pos, ctrls[0])
 			
 		else:
-			cmds.matchTransform(loc, ctrls[-1])
+			cmds.matchTransform(pos, ctrls[-1])
 			
 		
-		create_control_hierarchy(loc)
-		loc_zero, loc_offset, loc_driven, loc_connect = get_parent_grp(loc)
+		create_control_hierarchy(pos)
+		loc_zero, loc_offset, loc_driven, loc_connect = get_parent_grp(pos)
 		cmds.parent(loc_zero, driver_loc_grp)
 		
 		loc_drivens.append(loc_driven)
 		loc_connects.append(loc_connect)
 		loc_offsets.append(loc_offset)
-		driver_locators.append(loc)
+		driver_locators.append(pos)
 	
 	# constraint mid controller
 	par = cmds.parentConstraint(driver_locators[0], driver_locators[1], connect_grps[1], mo=True)[0]
@@ -446,14 +461,15 @@ def create_muscle_jnt_controllers(input_jnt, side):
 			connect_attr(loc_drivens[0], f'{attr}{axis}', driven_grps[0], f'{attr}{axis}')
 			connect_attr(loc_drivens[-1], f'{attr}{axis}', driven_grps[-1], f'{attr}{axis}')
 		
-	cmds.parentConstraint(joints[0], loc_drivens[0], mo=True)
-	cmds.parentConstraint(joints[-1], loc_drivens[-1], mo=True)
+	# cmds.parentConstraint(joints[0], loc_drivens[0], mo=True)
+	# cmds.parentConstraint(joints[-1], loc_drivens[-1], mo=True)
 	
 	return loc_drivens
-	
+
+
 def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2):
 	for side in ['l', 'r']:
-		loc_drivens = create_muscle_jnt_controllers(input_jnt, side)
+		loc_drivens = create_muscle_jnt_controllers(input_jnt, side, jnt_num=5)
 		
 		# locator driven groups
 		loc_start = loc_drivens[0]
@@ -463,7 +479,9 @@ def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2):
 		jnt1 = constraint_jnt_1.replace('_l_', f'_{side}_')
 		jnt2 = constraint_jnt_2.replace('_l_', f'_{side}_')
 		
-		cmds.parentConstraint(jnt1, loc_start, mo=True)
-		cmds.parentConstraint(jnt2, loc_end, mo=True)
+		cons1 = cmds.parentConstraint(jnt1, jnt2, loc_start, mo=True)[0]
+		cons2 = cmds.parentConstraint(jnt1, jnt2, loc_end, mo=True)[0]
+		set_attr(cons1, 'interpType', 2)
+		set_attr(cons2, 'interpType', 2)
 		
 create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001', 'inSkel_l_ft_upperlegTwist_0001', 'inSkel_l_ft_kneeTwist_0001')
