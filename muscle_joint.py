@@ -439,7 +439,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num):
 		driver_locators.append(pos)
 	
 	# constraint mid controller
-	par = cmds.parentConstraint(driver_locators[0], driver_locators[1], connect_grps[1], mo=True)[0]
+	par = cmds.parentConstraint(driver_locators[0], driver_locators[1], driven_grps[1], mo=True)[0]
 	set_attr(par, 'interpType', 2)
 	
 	cmds.aimConstraint(driver_locators[0],
@@ -465,12 +465,12 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num):
 		cons = cmds.parentConstraint(ctrl, joints[i], mo=True)[0]
 		set_attr(cons, 'interpType', 2)
 	
-	return loc_drivens
+	return loc_drivens, curve, up_curve
 
 
-def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2):
+def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, uniform=True):
 	for side in ['l', 'r']:
-		loc_drivens = create_muscle_jnt_controllers(input_jnt, side, jnt_num=5)
+		loc_drivens, curve, up_curve = create_muscle_jnt_controllers(input_jnt, side, jnt_num=5)
 		
 		# locator driven groups
 		loc_start = loc_drivens[0]
@@ -485,4 +485,19 @@ def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2):
 		set_attr(cons1, 'interpType', 2)
 		set_attr(cons2, 'interpType', 2)
 		
-create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001', 'inSkel_l_ft_upperlegTwist_0001', 'inSkel_l_ft_kneeTwist_0001')
+		if uniform:
+			for crv in [curve, up_curve]:
+				cmds.rebuildCurve(crv,
+								  rebuildType=0,  # Uniform
+								  keepRange=0,  # 0 to 1
+								  keepEndPoints=True,  # Keep ends
+								  keepTangents=False,
+								  spans=10,
+								  degree=2,
+								  keepControlPoints=False,
+								  replaceOriginal=True,
+								  ch=True
+								  )
+
+
+create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001', 'inSkel_l_ft_upperlegTwist_0001', 'inSkel_l_ft_kneeTwist_0001', uniform=True)
