@@ -506,7 +506,7 @@ def mid_push_setup(ctrl, input_jnt, side, region, desc, curve_shape):
 	vol_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_volume_0001')
 	
 	# create attributes
-	cmds.addAttr(ctrl, ln='volume', attributeType='float', keyable=True, multi=True)
+	cmds.addAttr(ctrl, ln='volume', attributeType='double2', keyable=True, multi=True)
 	for axis in 'YZ':
 		cmds.addAttr(ctrl, ln=f'volume{axis}', attributeType='double', keyable=True, parent='volume', dv=0)
 		connect_attr(base_mult, f'output{axis}', vol_mult, f'input1{axis}')
