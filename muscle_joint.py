@@ -60,6 +60,17 @@ def circle(radius=1.0, name="circle_crv"):
 	circle = cmds.circle(center=(0, 0, 0), normal=(0, 1, 0), radius=radius, name=name)[0]
 	cmds.delete(circle, ch=True)
 	return  circle
+	
+def create_display_layer(name, members, reference=False):
+	display_layer = cmds.createDisplayLayer(name=name, empty=True)
+	
+	if reference:
+		cmds.setAttr("{0}.displayType".format(display_layer), 2)
+	
+	if members:
+		cmds.editDisplayLayerMembers(display_layer, members, noRecurse=True)
+	
+	return display_layer
 
 
 def create_control_hierarchy(ctrl, levels=4):
@@ -178,9 +189,9 @@ def mirror_curve_shape(left_ctrl, right_ctrl):
 			pos[0] *= -1  # Mirror X only
 			cmds.xform(cvs_r[i], ws=True, t=pos)
 
-# ----------------------------------------
+# ---------------------------------------- main
 
-def create_curve_on_joint(input_jnt, side, jnt_num=5):
+def create_curve_on_joint(input_jnt, side, jnt_num):
 	token = input_jnt.split('_')
 	ori_side = _side_from_name(input_jnt)
 	region = token[2]
@@ -298,6 +309,15 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num):
 			# create controller
 			ctrl_name = f'ctrl_{side}_{region}_{desc}_{label}_0001'
 			ctrl = circle(name=ctrl_name)
+			
+			# change color
+			if side == 'l':
+				set_attr(f'{ctrl}Shape', 'overrideEnabled', 1)
+				set_attr(f'{ctrl}Shape', 'overrideColor', 18)
+			else:
+				set_attr(f'{ctrl}Shape', 'overrideEnabled', 1)
+				set_attr(f'{ctrl}Shape', 'overrideColor', 20)
+				
 			set_attr(ctrl, 'rotateZ', 90)
 			cmds.makeIdentity(ctrl, apply=True, t=False, r=True, s=False, n=False)
 			cmds.matchTransform(ctrl, pos)
@@ -461,16 +481,49 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num):
 			connect_attr(loc_drivens[0], f'{attr}{axis}', driven_grps[0], f'{attr}{axis}')
 			connect_attr(loc_drivens[-1], f'{attr}{axis}', driven_grps[-1], f'{attr}{axis}')
 	
-	for i, ctrl in enumerate(ctrls):
-		cons = cmds.parentConstraint(ctrl, joints[i], mo=True)[0]
-		set_attr(cons, 'interpType', 2)
+	
+	mid_push_setup(ctrls[1], input_jnt, side, region, desc, f'{curve}Shape')
 	
 	return loc_drivens, curve, up_curve
 
 
-def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, uniform=True):
-	for side in ['l', 'r']:
-		loc_drivens, curve, up_curve = create_muscle_jnt_controllers(input_jnt, side, jnt_num=5)
+def mid_push_setup(ctrl, input_jnt, side, region, desc, curve_shape):
+	"""
+	add volumeYZ, push middle controller
+	"""
+	
+	# create curve info
+	crv_info = cmds.createNode('curveInfo', n=f'crvInfo_{side}_{region}_{desc}_0001')
+	connect_attr(curve_shape, 'worldSpace[0]', crv_info, 'inputCurve')
+	arc_length = get_attr(crv_info, 'arcLength')
+	
+	# create norm mult node
+	base_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_norm_0001')
+	connect_attr(crv_info, 'arcLength', base_mult, 'input2X')
+	set_attr(base_mult, 'input1X', arc_length)
+	
+	# create volume mult node
+	vol_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_volume_0001')
+	
+	# create attributes
+	cmds.addAttr(ctrl, ln='volume', attributeType='float', keyable=True, multi=True)
+	for axis in 'YZ':
+		cmds.addAttr(ctrl, ln=f'volume{axis}', attributeType='double', keyable=True, parent='volume', dv=0)
+		connect_attr(base_mult, f'output{axis}', vol_mult, f'input1{axis}')
+	
+	cmds.setAttr(f'{ctrl}.volume[0]', 5, 5)
+	connect_attr(ctrl, f'volume[0].volumeY', vol_mult, f'input2Y')
+	connect_attr(ctrl, f'volume[0].volumeZ', vol_mult, f'input2Z')
+	
+	
+def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, mirror, uniform=True, jnt_num=5):
+	if mirror:
+		sides = ['l', 'r']
+	else:
+		sides = ['l']
+	
+	for side in sides:
+		loc_drivens, curve, up_curve = create_muscle_jnt_controllers(input_jnt, side, jnt_num)
 		
 		# locator driven groups
 		loc_start = loc_drivens[0]
@@ -500,4 +553,9 @@ def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, uniform=
 								  )
 
 
-create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001', 'inSkel_l_ft_upperlegTwist_0001', 'inSkel_l_ft_kneeTwist_0001', uniform=True)
+create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001',
+					 'inSkel_l_ft_upperlegTwist_0001',
+					 'inSkel_l_ft_kneeTwist_0001',
+					 uniform=True,
+					 jnt_num=5,
+					 mirror=False)
