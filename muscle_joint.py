@@ -295,7 +295,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	
 	# create control group
 	ctrl_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_ctrls_0001', p=parent_grp)
-	cmds.scaleConstraint('jnt_ROOT', ctrl_grp)
+	cmds.scaleConstraint(parent, ctrl_grp)
 	
 	# create controllers
 	label_map = {0: 'start', 1: 'mid', 2: 'end'}
@@ -425,17 +425,22 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	
 	# create aim constraint from mid
 	# start
+	if side == 'l':
+		aim_x = 1
+	else:
+		aim_x = -1
+
 	start_aim_cons = cmds.aimConstraint(ctrls[1],
 								  connect_grps[0],
-								  aimVector=(1, 0, 0),
-								  upVector=(1, 0, 0),
+								  aimVector=(aim_x, 0, 0),
+								  upVector=(0, 1, 0),
 								  wut='None',
 								  mo=True)[0]
 	# end
 	end_aim_cons = cmds.aimConstraint(ctrls[1],
 										connect_grps[-1],
-										aimVector=(-1, 0, 0),
-										upVector=(1, 0, 0),
+										aimVector=(-aim_x, 0, 0),
+										upVector=(0, 1, 0),
 										wut='None',
 										mo=True)[0]
 	
@@ -446,11 +451,11 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	loc_offsets = []
 	
 	driver_loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_driverLoc_0001', p=parent_grp)
-	cmds.scaleConstraint('jnt_ROOT', driver_loc_grp)
+	cmds.scaleConstraint(parent, driver_loc_grp)
 	
 	for name in ['start', 'end']:
 		pos = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{name}Pos_0001')[0]
-		set_attr(pos, 'visibility', 0)
+		# set_attr(pos, 'visibility', 0)
 		if name == 'start':
 			cmds.matchTransform(pos, ctrls[0])
 			
@@ -531,7 +536,7 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 		
 		# create condition node for com and str
 		cond = cmds.createNode('condition', n=f'cond_{side}_{region}_{desc}_vol{axis}_0001')
-		set_attr(cond, 'operation', 4)
+		set_attr(cond, 'operation', 2)
 		set_attr(cond, 'secondTerm', 1)
 		connect_attr(base_mult, f'outputX', cond, f'firstTerm')
 		connect_attr(ctrl, f'com_volume{axis}', cond, f'colorIfTrueR')
@@ -629,9 +634,11 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 def do_jiggle_deformer(ctrl, curve, up_curve):
 	# add attr to ctrl
 	add_attr(ctrl, 'JIGGLE', 'enum', enum_names=['-------'])
+	add_attr(ctrl, 'envelope', 'float', 0, 0, 1)
 	add_attr(ctrl, 'stiffness', 'float', 0.5, 0, 1)
-	add_attr(ctrl, 'damping', 'float', 0.5, 0, 1)
+	add_attr(ctrl, 'damping', 'float', 0.1, 0, 1)
 	add_attr(ctrl, 'directionBias', 'float', 0, -1, 1)
+	add_attr(ctrl, 'weight', 'float', 1, -1, 1)
 	
 	for crv in [curve, up_curve]:
 		crv_point = cmds.select(f'{crv}.cv[2]')
@@ -639,14 +646,89 @@ def do_jiggle_deformer(ctrl, curve, up_curve):
 		jiggle = cmds.ls(cmds.listHistory(crv), type='geometryFilter')[0]
 	
 		# connect to jiggle deformer
+		connect_attr(ctrl, 'envelope', jiggle, 'envelope')
 		connect_attr(ctrl, 'stiffness', jiggle, 'stiffness')
 		connect_attr(ctrl, 'damping', jiggle, 'damping')
 		connect_attr(ctrl, 'directionBias', jiggle, 'directionBias')
+		connect_attr(ctrl, 'weight', jiggle, 'jiggleWeight')
 		
 	cmds.select(clear=True)
 	
 	
+def mirror_attr_value():
+	"""
+	Get left keyable attribute values and mirror to right side.
+	Special case:
+	- auto_push_direction (double3): multiply XYZ by -1
+	- auto_push_X / Y / Z: multiply value by -1
+	"""
+	ctrls = cmds.ls('ctrl_l_*_mid_*', type='transform') or []
+
+	skip_prefixes = ("translate", "rotate", "scale")
+	skip_exact    = {"visibility"}
+
+	for l_ctrl in ctrls:
+		# build right ctrl name
+		r_ctrl = l_ctrl.replace('ctrl_l_', 'ctrl_r_')
+		if not cmds.objExists(r_ctrl):
+			cmds.warning("Right control not found for {} → {}".format(l_ctrl, r_ctrl))
+			continue
+
+		attrs = cmds.listAttr(l_ctrl, k=True) or []
+
+		for attr in attrs:
+			# skip TRS + vis
+			if any(attr.startswith(p) for p in skip_prefixes):
+				continue
+			if attr in skip_exact:
+				continue
+
+			# make sure right side has the same attr
+			if not cmds.attributeQuery(attr, node=r_ctrl, exists=True):
+				continue
+
+			l_plug = "{}.{}".format(l_ctrl, attr)
+			r_plug = "{}.{}".format(r_ctrl, attr)
+
+			try:
+				val = cmds.getAttr(l_plug)
+			except Exception:
+				continue
+
+			# ------------- special cases: auto-push position -------------
+			if attr == "auto_push_direction":
+				# val is like [(x, y, z)]
+				if isinstance(val, (list, tuple)) and val:
+					x, y, z = val[0]
+					# multiply all components by -1
+					cmds.setAttr(r_plug, -x, -y, -z, type="double3")
+				continue
+
+			if attr in ("auto_push_X", "auto_push_Y", "auto_push_Z"):
+				# scalar float (sometimes comes back as [x])
+				if isinstance(val, (list, tuple)):
+					val = val[0]
+				cmds.setAttr(r_plug, -val)
+				continue
+
+			# ------------- default: just copy the value -------------
+			if isinstance(val, (list, tuple)) and len(val) == 1:
+				val = val[0]
+
+			try:
+				cmds.setAttr(r_plug, val)
+			except Exception:
+				# handle strings etc.
+				if isinstance(val, str):
+					try:
+						cmds.setAttr(r_plug, val, type="string")
+					except Exception:
+						pass
+				else:
+					pass
+
 	
+
 def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, mirror, uniform=True, jnt_num=5, offset=0.5):
 	if mirror:
 		sides = ['l', 'r']
@@ -798,7 +880,7 @@ def create_muscle_setup_ui():
 	
 	cmds.rowColumnLayout(nc=2, cw=[(1, 120), (2, 80)])
 	cmds.text(l="Up Curve Offset:")
-	cmds.floatField("muscle_offset_if", value=0.5, pre=2)
+	cmds.floatField("muscle_offset_if", value=0.3, pre=2)
 	
 	cmds.setParent(main_col)
 	cmds.separator(h=4, style="none")
@@ -814,7 +896,7 @@ def create_muscle_setup_ui():
 	
 	cmds.rowColumnLayout(nc=2, cw=[(1, 120), (2, 130)])
 	cmds.text(l="Mirror L/R:")
-	cmds.checkBox("muscle_mirror_cb", l="", value=False)
+	cmds.checkBox("muscle_mirror_cb", l="", value=True)
 	cmds.text(l="Uniform rebuild:")
 	cmds.checkBox("muscle_uniform_cb", l="", value=True)
 	cmds.setParent("..")
@@ -831,6 +913,14 @@ def create_muscle_setup_ui():
 		l="Create Muscle Setup",
 		h=32,
 		c=_run_muscle_setup_from_ui
+	)
+	
+	cmds.separator(h=4, style="none")
+	
+	cmds.button(
+		l="Mirror Mid Ctrl Attributes",
+		h=28,
+		c=lambda *_: mirror_attr_value()
 	)
 	
 	cmds.separator(h=4, style="none")
