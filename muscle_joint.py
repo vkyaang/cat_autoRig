@@ -421,7 +421,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent):
 		cmds.skinPercent(up_crv_skin, up_cv, transformValue=[(joint, 1.0)])
 	
 	# jiggle deformer
-	do_jiggle_deformer(curve, up_curve)
+	do_jiggle_deformer(ctrls[1], curve, up_curve)
 	
 	# create aim constraint from mid
 	# start
@@ -626,13 +626,26 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 	connect_attr(mid_push_mult, 'output', mid_ctrl_grp[-1], 'translate')
 	
 
-def do_jiggle_deformer(curve, up_curve):
+def do_jiggle_deformer(ctrl, curve, up_curve):
+	# add attr to ctrl
+	add_attr(ctrl, 'JIGGLE', 'enum', enum_names=['-------'])
+	add_attr(ctrl, 'stiffness', 'float', 0.5, 0, 1)
+	add_attr(ctrl, 'damping', 'float', 0.5, 0, 1)
+	add_attr(ctrl, 'directionBias', 'float', 0, -1, 1)
+	
 	for crv in [curve, up_curve]:
 		crv_point = cmds.select(f'{crv}.cv[2]')
 		mel.eval('doJiggle 1 { "0.5", "0.5", "1", "0", "0", "default", "" };')
+		jiggle = cmds.ls(cmds.listHistory(crv), type='geometryFilter')[0]
 	
+		# connect to jiggle deformer
+		connect_attr(ctrl, 'stiffness', jiggle, 'stiffness')
+		connect_attr(ctrl, 'damping', jiggle, 'damping')
+		connect_attr(ctrl, 'directionBias', jiggle, 'directionBias')
+		
 	cmds.select(clear=True)
-
+	
+	
 	
 def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, mirror, uniform=True, jnt_num=5):
 	if mirror:
