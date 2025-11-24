@@ -192,7 +192,7 @@ def mirror_curve_shape(left_ctrl, right_ctrl):
 
 # ---------------------------------------- main
 
-def create_curve_on_joint(input_jnt, side, jnt_num):
+def create_curve_on_joint(input_jnt, side, jnt_num, offset):
 	token = input_jnt.split('_')
 	ori_side = _side_from_name(input_jnt)
 	region = token[2]
@@ -229,9 +229,9 @@ def create_curve_on_joint(input_jnt, side, jnt_num):
 		loc = cmds.spaceLocator()[0]
 		cmds.matchTransform(loc, jnt)
 		if side == 'l':
-			cmds.move(0, 1, 0, loc, objectSpace=True, r=True)
+			cmds.move(0, offset, 0, loc, objectSpace=True, r=True)
 		else:
-			cmds.move(0, -1, 0, loc, objectSpace=True, r=True)
+			cmds.move(0, -offset, 0, loc, objectSpace=True, r=True)
 		up_pose = cmds.xform(loc, q=True, ws=True, t=True)
 		up_positions.append(up_pose)
 		up_locators.append(loc)
@@ -283,12 +283,12 @@ def create_curve_on_joint(input_jnt, side, jnt_num):
 	
 	return joints, positions, curve, up_curve, parent_grp, bind_joints
 
-def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent):
+def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	"""
 	create three controllers for main joints
 	"""
 	input_jnt = input_jnt.replace('_l_', f'_{side}_')
-	joints, positions, curve, up_curve, parent_grp, bind_joints = create_curve_on_joint(input_jnt, side, jnt_num)
+	joints, positions, curve, up_curve, parent_grp, bind_joints = create_curve_on_joint(input_jnt, side, jnt_num, offset)
 	tokens = input_jnt.split('_')
 	region = tokens[2]
 	desc = tokens[3]
@@ -647,14 +647,14 @@ def do_jiggle_deformer(ctrl, curve, up_curve):
 	
 	
 	
-def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, mirror, uniform=True, jnt_num=5):
+def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, mirror, uniform=True, jnt_num=5, offset=0.5):
 	if mirror:
 		sides = ['l', 'r']
 	else:
 		sides = ['l']
 	
 	for side in sides:
-		loc_drivens, curve, up_curve = create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent=constraint_jnt_1)
+		loc_drivens, curve, up_curve = create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent=constraint_jnt_1, offset=offset)
 		
 		# locator driven groups
 		loc_start = loc_drivens[0]
@@ -684,9 +684,164 @@ def create_muscle_set_up(input_jnt, constraint_jnt_1, constraint_jnt_2, mirror, 
 								  )
 
 
-create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001',
-					 'jnt_l_ft_upperlegTwist_0001',
-					 'jnt_l_ft_kneeTwist_0001',
-					 uniform=True,
-					 jnt_num=5,
-					 mirror=False)
+# ----------------- UI ----------------- #
+
+def _muscle_load_selected_into(field_name):
+	"""
+	Utility: load first selected joint into a textFieldButtonGrp.
+	"""
+	sel = cmds.ls(sl=True, type="joint")
+	if not sel:
+		cmds.warning("Please select a joint first.")
+		return
+	cmds.textFieldButtonGrp(field_name, e=True, text=sel[0])
+
+
+def _run_muscle_setup_from_ui(*_):
+	"""
+	Read values from UI and call create_muscle_set_up.
+	"""
+	# Query fields
+	input_jnt = cmds.textFieldButtonGrp("muscle_input_jnt_tfb", q=True, text=True)
+	con_jnt_1 = cmds.textFieldButtonGrp("muscle_con1_jnt_tfb", q=True, text=True)
+	con_jnt_2 = cmds.textFieldButtonGrp("muscle_con2_jnt_tfb", q=True, text=True)
+	
+	mirror = cmds.checkBox("muscle_mirror_cb", q=True, value=True)
+	uniform = cmds.checkBox("muscle_uniform_cb", q=True, value=True)
+	jnt_num = cmds.intField("muscle_jntnum_if", q=True, value=True)
+	offset = cmds.floatField("muscle_offset_if", q=True, value=True)
+	
+	# Basic validation
+	if not input_jnt or not cmds.objExists(input_jnt):
+		cmds.warning("Input long muscle joint is invalid or does not exist.")
+		return
+	if not con_jnt_1 or not cmds.objExists(con_jnt_1):
+		cmds.warning("Constraint Joint 1 is invalid or does not exist.")
+		return
+	if not con_jnt_2 or not cmds.objExists(con_jnt_2):
+		cmds.warning("Constraint Joint 2 is invalid or does not exist.")
+		return
+	if jnt_num < 3:
+		cmds.warning("jnt_num should be at least 3.")
+		return
+	
+	# Run your main function
+	create_muscle_set_up(
+		input_jnt=input_jnt,
+		constraint_jnt_1=con_jnt_1,
+		constraint_jnt_2=con_jnt_2,
+		mirror=mirror,
+		uniform=uniform,
+		jnt_num=jnt_num,
+		offset=offset
+	)
+
+
+def create_muscle_setup_ui():
+	"""
+	Compact, cleaner window layout (no sliders).
+	"""
+	win_name = "muscleSetupUI_win"
+	if cmds.window(win_name, exists=True):
+		cmds.deleteUI(win_name)
+	
+	win = cmds.window(
+		win_name,
+		title="Muscle Setup",
+		sizeable=True,
+		widthHeight=(320, 260),
+		minimizeButton=True,
+		maximizeButton=False
+	)
+	
+	main_col = cmds.columnLayout(adj=True, rs=6, co=("both", 8))
+	
+	cmds.text(l="Muscle Setup", al="center", h=20)
+	cmds.separator(h=6, style="in")
+	
+	# ---------- Input joints ----------
+	cmds.frameLayout(
+		label="Joints",
+		collapsable=False,
+		borderVisible=True,
+		mw=4,
+		mh=4
+	)
+	cmds.columnLayout(adj=True, rs=4)
+	
+	cmds.textFieldButtonGrp(
+		"muscle_input_jnt_tfb",
+		label="Input muscle:",
+		buttonLabel="<< Sel",
+		text="jnt_l_ft_longTriceps_0001_0001",
+		buttonCommand=lambda *_: _muscle_load_selected_into("muscle_input_jnt_tfb"),
+		columnWidth=[(1, 90), (2, 170), (3, 50)]
+	)
+	
+	cmds.textFieldButtonGrp(
+		"muscle_con1_jnt_tfb",
+		label="Constraint 1:",
+		buttonLabel="<< Sel",
+		text="jnt_l_ft_upperlegTwist_0001",
+		buttonCommand=lambda *_: _muscle_load_selected_into("muscle_con1_jnt_tfb"),
+		columnWidth=[(1, 90), (2, 170), (3, 50)]
+	)
+	
+	cmds.textFieldButtonGrp(
+		"muscle_con2_jnt_tfb",
+		label="Constraint 2:",
+		buttonLabel="<< Sel",
+		text="jnt_l_ft_kneeTwist_0001",
+		buttonCommand=lambda *_: _muscle_load_selected_into("muscle_con2_jnt_tfb"),
+		columnWidth=[(1, 90), (2, 170), (3, 50)]
+	)
+	
+	cmds.rowColumnLayout(nc=2, cw=[(1, 120), (2, 80)])
+	cmds.text(l="Up Curve Offset:")
+	cmds.floatField("muscle_offset_if", value=0.5, pre=2)
+	
+	cmds.setParent(main_col)
+	cmds.separator(h=4, style="none")
+	
+	# ---------- Options ----------
+	cmds.frameLayout(
+		label="Options",
+		collapsable=False,
+		borderVisible=True,
+		mw=4,
+		mh=4
+	)
+	
+	cmds.rowColumnLayout(nc=2, cw=[(1, 120), (2, 130)])
+	cmds.text(l="Mirror L/R:")
+	cmds.checkBox("muscle_mirror_cb", l="", value=False)
+	cmds.text(l="Uniform rebuild:")
+	cmds.checkBox("muscle_uniform_cb", l="", value=True)
+	cmds.setParent("..")
+	
+	cmds.rowColumnLayout(nc=2, cw=[(1, 120), (2, 80)])
+	cmds.text(l="Bind joint count:")
+	cmds.intField("muscle_jntnum_if", value=5, minValue=3)
+	cmds.setParent(main_col)
+	
+	cmds.separator(h=8, style="none")
+	
+	# ---------- Button ----------
+	cmds.button(
+		l="Create Muscle Setup",
+		h=32,
+		c=_run_muscle_setup_from_ui
+	)
+	
+	cmds.separator(h=4, style="none")
+	
+	cmds.showWindow(win)
+
+create_muscle_setup_ui()
+
+# create_muscle_set_up('jnt_l_ft_longTriceps_0001_0001',
+# 					 'jnt_l_ft_upperlegTwist_0001',
+# 					 'jnt_l_ft_kneeTwist_0001',
+# 					 uniform=True,
+# 					 jnt_num=5,
+# 					 mirror=False)
