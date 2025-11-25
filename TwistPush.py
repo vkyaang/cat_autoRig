@@ -65,27 +65,49 @@ create_twist_push(input_joint='jnt_l_ft_upperLeg_0001', name='upperleg', num=5)
 
 #
 #
-# for i in range(6, 7):
-# 	jnt = f'jnt_l_ft_upperlegTwist_000{i}'
-# 	twist = f'jnt_c_spineTwist_000{i}'
-#
-# 	cmds.createNode('joint', n=twist, p=jnt)
-# 	mult = cmds.createNode('multiplyDivide', n=f'mult_c_spineTwist_000{i}_0001')
-#
-# 	for index in range(1, 3):
-#
-# 		rmp = cmds.createNode('remapValue', n=f'rmp_c_spineTwist_000{i}_000{index}')
-# 		cmds.connectAttr('qte_c_spineTwist_0001.outputRotateX', f'{rmp}.inputValue')
-# 		cmds.setAttr(f'{rmp}.outputMin', 1)
-# 		cmds.setAttr(f'{rmp}.outputMax', 1.5)
-# 		cmds.setAttr(f'{rmp}.inputMin', 0)
-#
-# 		if index == 1:
-# 			cmds.setAttr(f'{rmp}.inputMax', 90)
-# 			cmds.connectAttr(f'{rmp}.outValue', f'{mult}.input1X')
-# 			continue
-# 		else:
-# 			cmds.setAttr(f'{rmp}.inputMax', -90)
-# 			cmds.connectAttr(f'{rmp}.outValue', f'{mult}.input2X')
-#
-# 		cmds.connectAttr(f'{mult}.outputX', f'{twist}.scaleZ')
+
+mult_matrix = cmds.createNode('multMatrix', n=f'multMatrix_c_neckTwist_0001')
+dec = cmds.createNode('decomposeMatrix', n=f'dec_c_neckTwist_0001')
+qte = cmds.createNode('quatToEuler', n=f'qte_c_neckTwist_0001')
+
+
+
+cmds.connectAttr(f'{mult_matrix}.matrixSum', f'{dec}.inputMatrix')
+cmds.connectAttr(f'{dec}.outputQuatX', f'{qte}.inputQuatX')
+cmds.connectAttr(f'{dec}.outputQuatW', f'{qte}.inputQuatW')
+
+for i in range(2, 7):
+	jnt = f'jnt_c_neck_000{i}'
+	twist = f'jnt_c_neckTwist_000{i}'
+
+	cmds.createNode('joint', n=twist, p=jnt)
+	mult = cmds.createNode('multiplyDivide', n=f'mult_c_neckTwist_000{i}_0001')
+	
+	cmds.connectAttr(f'{jnt}.matrix', f'{mult_matrix}.matrixIn[{i}]')
+	
+	for index in range(1, 3):
+
+		rmp = cmds.createNode('remapValue', n=f'rmp_c_neckTwist_000{i}_000{index}')
+		cmds.connectAttr('qte_c_neckTwist_0001.outputRotateX', f'{rmp}.inputValue')
+		cmds.setAttr(f'{rmp}.outputMin', 1)
+		cmds.setAttr(f'{rmp}.outputMax', 1.5)
+		cmds.setAttr(f'{rmp}.inputMin', 0)
+
+		if index == 1:
+			cmds.setAttr(f'{rmp}.inputMax', 90)
+			cmds.connectAttr(f'{rmp}.outValue', f'{mult}.input1X')
+			continue
+		else:
+			cmds.setAttr(f'{rmp}.inputMax', -90)
+			cmds.connectAttr(f'{rmp}.outValue', f'{mult}.input2X')
+
+		cmds.connectAttr(f'{mult}.outputX', f'{twist}.scaleX')
+		cmds.connectAttr(f'{mult}.outputX', f'{twist}.scaleY')
+		cmds.connectAttr(f'{mult}.outputX', f'{twist}.scaleZ')
+
+inv_node = cmds.createNode('inverseMatrix')
+matrix_sum = cmds.getAttr(f'{mult_matrix}.matrixSum')
+cmds.setAttr(f'{inv_node}.inputMatrix', matrix_sum, type='matrix')
+inv_mat = cmds.getAttr(f'{inv_node}.outputMatrix')
+cmds.setAttr(f'{mult_matrix}.matrixIn[7]', *inv_mat, type='matrix')
+cmds.delete(inv_node)
