@@ -192,15 +192,16 @@ def mirror_curve_shape(left_ctrl, right_ctrl):
 
 # ---------------------------------------- main
 
-def create_curve_on_joint(input_jnt, side, jnt_num, offset):
+def create_curve_on_joint(input_jnt, side, jnt_num, offset, parent):
 	token = input_jnt.split('_')
 	ori_side = _side_from_name(input_jnt)
 	region = token[2]
 	desc = token[3]
+	index = token[4]
 	
 	# create parent group
-	parent_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_muscleData_0001')
-	curve_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_curves_0001', p=parent_grp)
+	parent_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_muscleData_{index}')
+	curve_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_curves_{index}', p=parent_grp)
 	
 	input_jnt = input_jnt.replace('_l_', f'_{side}_')
 	
@@ -216,7 +217,7 @@ def create_curve_on_joint(input_jnt, side, jnt_num, offset):
 	positions.insert(len(positions)-1, pos_mid_2)
 	
 	# create curve
-	curve = cmds.curve(n=f'crv_{side}_{region}_{desc}_0001', p=positions, d=2)
+	curve = cmds.curve(n=f'crv_{side}_{region}_{desc}_{index}', p=positions, d=2)
 	crv_shape = cmds.listRelatives(curve, c=True, type='shape')[0]
 	crv_shape = cmds.rename(crv_shape, f'{curve}Shape')
 	cmds.parent(curve, curve_grp)
@@ -243,13 +244,13 @@ def create_curve_on_joint(input_jnt, side, jnt_num, offset):
 	
 	cmds.delete(loc for loc in up_locators)
 	
-	up_curve = cmds.curve(n=f'crv_{side}_{region}_{desc}_up_0001', p=up_positions, d=2)
+	up_curve = cmds.curve(n=f'crv_{side}_{region}_{desc}_up_{index}', p=up_positions, d=2)
 	up_crv_shape = cmds.listRelatives(up_curve, c=True, type='shape')[0]
 	up_crv_shape = cmds.rename(up_crv_shape, f'{up_curve}Shape')
 	cmds.parent(up_curve, curve_grp)
 	
 	# create uvpin
-	uv_pin = cmds.createNode('uvPin', n=f'uvPin_{side}_{region}_{desc}_0001')
+	uv_pin = cmds.createNode('uvPin', n=f'uvPin_{side}_{region}_{desc}_{index}')
 	connect_attr(f'{crv_shape}', 'worldSpace[0]', uv_pin, 'deformedGeometry')
 	connect_attr(f'{up_crv_shape}', 'worldSpace[0]', uv_pin, 'railCurve')
 	set_attr(uv_pin, 'normalOverride', 1)
@@ -258,19 +259,22 @@ def create_curve_on_joint(input_jnt, side, jnt_num, offset):
 	
 	#create bind joints
 	bind_joints = []
-	jnt_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_joints_0001', p=parent_grp)
+	jnt_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_joints_{index}', p=parent_grp)
 
 	for i in range(jnt_num):
-		jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_{desc}_bind_{i + 1:04d}')
-		cmds.parent(jnt, jnt_grp)
+		jnt = cmds.createNode('joint', n=f'jnt_{side}_{region}_{desc}_bind_{index}_{i + 1:04d}')
+		create_control_hierarchy(jnt, 1)
+		zero = get_parent_grp(jnt)[3]
+		cmds.parent(zero, jnt_grp)
+		cmds.scaleConstraint(parent, zero, mo=True)
 
 		# create decompose node
-		dec_node = cmds.createNode('decomposeMatrix', n=f'dec_{side}_{region}_{desc}_{i + 1:04d}')
+		dec_node = cmds.createNode('decomposeMatrix', n=f'dec_{side}_{region}_{desc}_{index}_{i + 1:04d}')
 		# connect uv pin output
 		connect_attr(uv_pin, f'outputMatrix[{i}]', dec_node, 'inputMatrix')
 
-		connect_attr(dec_node, 'outputTranslate', jnt, 'translate')
-		connect_attr(dec_node, 'outputRotate', jnt, 'rotate')
+		connect_attr(dec_node, 'outputTranslate', zero, 'translate')
+		connect_attr(dec_node, 'outputRotate', zero, 'rotate')
 
 		bind_joints.append(jnt)
 
@@ -288,13 +292,14 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	create three controllers for main joints
 	"""
 	input_jnt = input_jnt.replace('_l_', f'_{side}_')
-	joints, positions, curve, up_curve, parent_grp, bind_joints = create_curve_on_joint(input_jnt, side, jnt_num, offset)
+	joints, positions, curve, up_curve, parent_grp, bind_joints = create_curve_on_joint(input_jnt, side, jnt_num, offset, parent)
 	tokens = input_jnt.split('_')
 	region = tokens[2]
 	desc = tokens[3]
+	index = tokens[4]
 	
 	# create control group
-	ctrl_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_ctrls_0001', p=parent_grp)
+	ctrl_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_ctrls_{index}', p=parent_grp)
 	cmds.scaleConstraint(parent, ctrl_grp)
 	
 	# create controllers
@@ -311,7 +316,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 		if i in label_map:
 			label = label_map[i]
 			# create controller
-			ctrl_name = f'ctrl_{side}_{region}_{desc}_{label}_0001'
+			ctrl_name = f'ctrl_{side}_{region}_{desc}_{label}_{index}'
 			ctrl = circle(name=ctrl_name)
 			
 			# change color
@@ -327,7 +332,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 			cmds.matchTransform(ctrl, pos)
 			
 			# create joint
-			jnt_name = f'jnt_{side}_{region}_{desc}_{label}_0001'
+			jnt_name = f'jnt_{side}_{region}_{desc}_{label}_{index}_0001'
 			jnt = cmds.createNode('joint', n=jnt_name)
 			cmds.matchTransform(jnt, ctrl)
 			cmds.makeIdentity(jnt, apply=True, t=False, r=True, s=False, n=False)
@@ -348,7 +353,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 			# create tangent joint
 			if i == 0:
 				tan_label = 'start'  # use previous label
-				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_0001'
+				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_{index}_0001'
 				tan_jnt = cmds.createNode('joint', n=tan_name)
 				
 				# get pos
@@ -367,7 +372,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 				# add tangent attr to ctrl
 				add_attr(ctrl, 'tangent', 'float', 0)
 				# connect to tangent joint
-				adl_node = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_{tan_label}Tangent_0001')
+				adl_node = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_{tan_label}Tangent_{index}_0001')
 				connect_attr(ctrl, 'tangent', adl_node, 'input1D[0]')
 				tx = get_attr(tan_jnt, 'translateX')
 				set_attr(adl_node, 'input1D[1]', tx)
@@ -378,7 +383,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 				continue
 			elif i == 2:
 				tan_label = 'end'  # use previous label
-				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_0001'
+				tan_name = f'jnt_{side}_{region}_{desc}_{tan_label}Tan_{index}_0001'
 				tan_jnt = cmds.createNode('joint', n=tan_name)
 				
 				cmds.xform(tan_jnt, ws=True, t=positions[-2])
@@ -397,7 +402,7 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 				# add tangent attr to ctrl
 				add_attr(ctrl, 'tangent', 'float', 0)
 				# connect to tangent joint
-				adl_node = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_{tan_label}Tangent_0001')
+				adl_node = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_{tan_label}Tangent_{index}_0001')
 				connect_attr(ctrl, 'tangent', adl_node, 'input1D[0]')
 				tx = get_attr(tan_jnt, 'translateX')
 				set_attr(adl_node, 'input1D[1]', tx)
@@ -450,11 +455,11 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	loc_drivens = []
 	loc_offsets = []
 	
-	driver_loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_driverLoc_0001', p=parent_grp)
+	driver_loc_grp = cmds.createNode('transform', n=f'grp_{side}_{region}_{desc}_driverLoc_{index}', p=parent_grp)
 	cmds.scaleConstraint(parent, driver_loc_grp)
 	
 	for name in ['start', 'end']:
-		pos = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{name}Pos_0001')[0]
+		pos = cmds.spaceLocator(n=f'loc_{side}_{region}_{desc}_{name}Pos_{index}_0001')[0]
 		# set_attr(pos, 'visibility', 0)
 		if name == 'start':
 			cmds.matchTransform(pos, ctrls[0])
@@ -501,35 +506,35 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 			connect_attr(loc_drivens[-1], f'{attr}{axis}', driven_grps[-1], f'{attr}{axis}')
 	
 	
-	mid_push_setup(ctrls, bind_joints[1:-1], side, region, desc, f'{curve}Shape', driver_locators)
+	mid_push_setup(ctrls, bind_joints[1:-1], side, region, desc, index, f'{curve}Shape', driver_locators)
 	
 	return loc_drivens, curve, up_curve
 
 
-def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_locators):
+def mid_push_setup(ctrls, bind_joints, side, region, desc, index,  curve_shape, drive_locators):
 	"""
 	add volumeYZ, push middle controller
 	"""
 	ctrl = ctrls[1]
 	
 	# create curve info
-	crv_info = cmds.createNode('curveInfo', n=f'crvInfo_{side}_{region}_{desc}_0001')
+	crv_info = cmds.createNode('curveInfo', n=f'crvInfo_{side}_{region}_{desc}_{index}_0001')
 	connect_attr(curve_shape, 'worldSpace[0]', crv_info, 'inputCurve')
 	arc_length = get_attr(crv_info, 'arcLength')
 	
 	# normalize global scale
-	scale_fix_mdl = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_scaleFixFactor_0001')
+	scale_fix_mdl = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_scaleFixFactor_{index}_0001')
 	set_attr(scale_fix_mdl, 'input1X', arc_length)
 	connect_attr('jnt_ROOT', 'scale', scale_fix_mdl, 'input2')
 	
 	# create norm mult node
-	base_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_norm_0001')
+	base_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_norm_{index}_0001')
 	set_attr(base_mult, 'operation', 2)
 	connect_attr(crv_info, 'arcLength', base_mult, 'input2X')
 	connect_attr(scale_fix_mdl, 'outputX', base_mult, 'input1X')
 	
 	# create volume mult node
-	vol_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_volume_0001')
+	vol_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_volume_{index}_0001')
 	set_attr(vol_mult, 'operation', 3)
 	
 	# create attributes
@@ -540,7 +545,7 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 		connect_attr(base_mult, f'outputX', vol_mult, f'input1{axis}')
 		
 		# create condition node for com and str
-		cond = cmds.createNode('condition', n=f'cond_{side}_{region}_{desc}_vol{axis}_0001')
+		cond = cmds.createNode('condition', n=f'cond_{side}_{region}_{desc}_vol{axis}_{index}_0001')
 		set_attr(cond, 'operation', 2)
 		set_attr(cond, 'secondTerm', 1)
 		connect_attr(base_mult, f'outputX', cond, f'firstTerm')
@@ -561,9 +566,9 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 	end_pos_grps.append(drive_locators[-1])
 	mid_ctrl_grp = list(get_parent_grp(ctrl))
 	
-	start_matrix = cmds.createNode('multMatrix', n=f'multMatrix_{side}_{region}_{desc}_startPos_0001')
-	end_matrix = cmds.createNode('multMatrix', n=f'multMatrix_{side}_{region}_{desc}_endPos_0001')
-	mid_matrix = cmds.createNode('multMatrix', n=f'multMatrix_{side}_{region}_{desc}_midPos_0001')
+	start_matrix = cmds.createNode('multMatrix', n=f'multMatrix_{side}_{region}_{desc}_startPos_{index}_0001')
+	end_matrix = cmds.createNode('multMatrix', n=f'multMatrix_{side}_{region}_{desc}_endPos_{index}_0001')
+	mid_matrix = cmds.createNode('multMatrix', n=f'multMatrix_{side}_{region}_{desc}_midPos_{index}_0001')
 	
 	# add attr
 	add_attr(ctrl, 'AUTO', 'enum', enum_names=['-------'])
@@ -575,44 +580,44 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 	add_attr(ctrl, 'auto_push_strength', 'float', 1)
 	
 	for i, groups in enumerate([start_pos_grps[::-1], end_pos_grps[::-1]]):
-		for index, grp in enumerate(groups):
+		for ind, grp in enumerate(groups):
 			if i == 0:
-				connect_attr(grp, 'matrix', start_matrix, f'matrixIn[{index}]')
+				connect_attr(grp, 'matrix', start_matrix, f'matrixIn[{ind}]')
 			else:
-				connect_attr(grp, 'matrix', end_matrix, f'matrixIn[{index}]')
+				connect_attr(grp, 'matrix', end_matrix, f'matrixIn[{ind}]')
 	
 	temp_mid_ctrl_grps = mid_ctrl_grp[:-1]
 	for i, grp in enumerate(temp_mid_ctrl_grps[::-1]):
 		connect_attr(grp, 'matrix', mid_matrix, f'matrixIn[{i}]')
 		
 	# create distance between
-	dis_btw_start = cmds.createNode('distanceBetween', n=f'disBtw_{side}_{region}_{desc}_start_0001')
+	dis_btw_start = cmds.createNode('distanceBetween', n=f'disBtw_{side}_{region}_{desc}_start_{index}_0001')
 	connect_attr(start_matrix, 'matrixSum', dis_btw_start, 'inMatrix1')
 	connect_attr(mid_matrix, 'matrixSum', dis_btw_start, 'inMatrix2')
 	
-	dis_btw_end = cmds.createNode('distanceBetween', n=f'disBtw_{side}_{region}_{desc}_end_0001')
+	dis_btw_end = cmds.createNode('distanceBetween', n=f'disBtw_{side}_{region}_{desc}_end_{index}_0001')
 	connect_attr(end_matrix, 'matrixSum', dis_btw_end, 'inMatrix1')
 	connect_attr(mid_matrix, 'matrixSum', dis_btw_end, 'inMatrix2')
 	
-	pma_dis = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_dist_0001')
+	pma_dis = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_dist_{index}_0001')
 	connect_attr(dis_btw_start, 'distance', pma_dis, 'input1D[0]')
 	connect_attr(dis_btw_end, 'distance', pma_dis, 'input1D[1]')
 	
 	# create mult push
-	mid_norm = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_midPushNorm_0001')
+	mid_norm = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_midPushNorm_{index}_0001')
 	set_attr(mid_norm, 'operation', 2)
 	mid_dis = get_attr(pma_dis, 'output1D')
 	connect_attr(pma_dis, 'output1D', mid_norm, 'input2X')
 	set_attr(mid_norm, 'input1X', mid_dis)
 	
 	# create condition
-	mid_cond = cmds.createNode('condition', n=f'cond_{side}_{region}_{desc}_midPush_0001')
+	mid_cond = cmds.createNode('condition', n=f'cond_{side}_{region}_{desc}_midPush_{index}_0001')
 	set_attr(mid_cond, 'operation', 2)
 	set_attr(mid_cond, 'secondTerm', 1)
 	connect_attr(mid_norm, f'outputX', mid_cond, f'firstTerm')
 	
 	# adl norm
-	pma_norm = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_midNorm_0001')
+	pma_norm = cmds.createNode('plusMinusAverage', n=f'pma_{side}_{region}_{desc}_midNorm_{index}_0001')
 	connect_attr(mid_norm, 'outputX', pma_norm, 'input1D[0]')
 	set_attr(pma_norm, 'input1D[1]', 1)
 	set_attr(pma_norm, 'operation', 2)
@@ -620,16 +625,16 @@ def mid_push_setup(ctrls, bind_joints, side, region, desc, curve_shape, drive_lo
 	connect_attr(pma_norm, f'output1D', mid_cond, f'colorIfTrueR')
 	
 	# create strength mult
-	mid_strength_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_strPush_0001')
+	mid_strength_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_strPush_{index}_0001')
 	connect_attr(ctrl, 'auto_push_strength', mid_strength_mult, 'input1X')
 	connect_attr(mid_cond, 'outColorR', mid_strength_mult, 'input2X')
 	# create auto-push mult
-	auto_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_autoPush_0001')
+	auto_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_autoPush_{index}_0001')
 	connect_attr(ctrl, 'auto_push', auto_mult, 'input1X')
 	connect_attr(mid_strength_mult, 'outputX', auto_mult, 'input2X')
 	
 	# create push mult
-	mid_push_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_midPush_0001')
+	mid_push_mult = cmds.createNode('multiplyDivide', n=f'mult_{side}_{region}_{desc}_midPush_{index}_0001')
 	connect_attr(ctrl, 'auto_push_direction', mid_push_mult, 'input1')
 	for axis in 'XYZ':
 		connect_attr(auto_mult, 'outputX', mid_push_mult, f'input2{axis}')
