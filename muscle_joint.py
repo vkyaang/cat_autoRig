@@ -476,16 +476,21 @@ def create_muscle_jnt_controllers(input_jnt, side, jnt_num, parent, offset):
 	par = cmds.parentConstraint(driver_locators[0], driver_locators[1], driven_grps[1], mo=True)[0]
 	set_attr(par, 'interpType', 2)
 	
+	if side == 'l':
+		aim_x = -1
+	else:
+		aim_x = 1
+		
 	cmds.aimConstraint(driver_locators[0],
 					   driver_locators[-1],
-					   aimVector=(-1, 0, 0),
-					   upVector=(1, 0, 0),
+					   aimVector=(aim_x, 0, 0),
+					   upVector=(0, 1, 0),
 					   wut='None',
 					   mo=True)
 	cmds.aimConstraint(driver_locators[-1],
 					   driver_locators[0],
-					   aimVector=(1, 0, 0),
-					   upVector=(1, 0, 0),
+					   aimVector=(-aim_x, 0, 0),
+					   upVector=(0, 1, 0),
 					   wut='None',
 					   mo=True)
 	
