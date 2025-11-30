@@ -814,6 +814,7 @@ def mirror_attr_value():
     skip_prefixes = ("translate", "rotate", "scale")
     skip_exact    = {"visibility"}
 
+    
     for l_ctrl in ctrls:
         # build right ctrl name
         r_ctrl = l_ctrl.replace('ctrl_l_', 'ctrl_r_')
@@ -873,8 +874,70 @@ def mirror_attr_value():
                         pass
                 else:
                     pass
-	        
-    
+      
+def mirror_limit_info():
+    """
+    Mirror limit information for all:
+        driven_l_*_endPos_*_0001  →  driven_r_*_endPos_*_0001
+
+    Rules:
+      - Translate limits:
+            swap min/max, negate values, swap enable flags
+      - Rotate limits:
+            copy as-is (no negate, no swap)
+    """
+
+    driven_end = cmds.ls('driven_l_*_endPos_*_0001', type='transform') or []
+
+    for driven in driven_end:
+        driven_r = driven.replace('_l_', '_r_')
+        if not cmds.objExists(driven_r):
+            cmds.warning("Right-side node not found for {}".format(driven))
+            continue
+
+        # ---------------------------
+        # TRANSLATE LIMITS (swap + negate)
+        # ---------------------------
+        for flag, eflag in (('tx', 'etx'), ('ty', 'ety'), ('tz', 'etz')):
+            # query L side
+            try:
+                tmin, tmax = cmds.transformLimits(driven, q=True, **{flag: True})
+                emin, emax = cmds.transformLimits(driven, q=True, **{eflag: True})
+            except Exception:
+                # if node doesn't support that axis, skip
+                continue
+
+            # mirror: swap + negate
+            new_min = -tmax
+            new_max = -tmin
+            new_emin = emax   # min enable on R = max enable on L
+            new_emax = emin   # max enable on R = min enable on L
+
+            cmds.transformLimits(
+                driven_r,
+                **{flag: (new_min, new_max), eflag: (new_emin, new_emax)}
+            )
+
+        # ---------------------------
+        # ROTATE LIMITS (copy only)
+        # ---------------------------
+        for flag, eflag in (('rx', 'erx'), ('ry', 'ery'), ('rz', 'erz')):
+            try:
+                rmin, rmax = cmds.transformLimits(driven, q=True, **{flag: True})
+                emin, emax = cmds.transformLimits(driven, q=True, **{eflag: True})
+            except Exception:
+                continue
+
+            cmds.transformLimits(
+                driven_r,
+                **{flag: (rmin, rmax), eflag: (emin, emax)}
+            )
+
+        # print("Mirrored limits: {} → {}".format(driven, driven_r))
+mirror_limit_info()
+
+
+
 def select_bind_joints(jnt_name):
     """
     From a skel joint like:
@@ -1101,6 +1164,12 @@ def create_muscle_setup_ui():
         l="Mirror Mid Ctrl Attributes",
         h=28,
         c=lambda *_: mirror_attr_value()
+    )
+    
+    cmds.button(
+        l="Mirror Limit Info",
+        h=28,
+        c=lambda *_: mirror_limit_info()
     )
     
     # ---------- Select Bind Joints ----------
